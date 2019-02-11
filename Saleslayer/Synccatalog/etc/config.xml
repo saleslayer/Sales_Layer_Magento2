@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <synccatalog>
+            <general>
+                <enabled>1</enabled>
+                <activate_debug_logs>0</activate_debug_logs>
+                <manage_indexers>1</manage_indexers>
+                <sql_to_insert_limit>1</sql_to_insert_limit>
+            </general>
+        </synccatalog>
+    </default>
+</config>

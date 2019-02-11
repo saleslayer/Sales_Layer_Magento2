@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Cron:etc/crontab.xsd">
+    <group id="saleslayer_synccatalog">
+        <job name="Saleslayer_Synccatalog_Syncdatacron" instance="Saleslayer\Synccatalog\Model\Syncdatacron" method="sync_data_connectors">
+            <schedule>*/5 * * * *</schedule>
+        </job>
+        <job name="Saleslayer_Synccatalog_Autosynccron" instance="Saleslayer\Synccatalog\Model\Autosynccron" method="auto_sync_connectors">
+            <schedule>*/15 * * * *</schedule>
+        </job>
+    </group>
+</config>

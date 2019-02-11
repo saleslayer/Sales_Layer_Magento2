@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Acl/etc/acl.xsd">
+    <acl>
+        <resources>
+            <resource id="Magento_Backend::admin">
+                <resource id="Saleslayer_Synccatalog::synccatalog" title="Synccatalog" sortOrder="40">
+                    <resource id="Saleslayer_Synccatalog::manage" title="All Synccatalog" sortOrder="10" >
+                        <resource id="Saleslayer_Synccatalog::save" title="Save Synccatalog" sortOrder="10" />
+                        <resource id="Saleslayer_Synccatalog::synccatalog_delete" title="Delete Synccatalog" sortOrder="20" />
+                    </resource>
+                </resource>
+            </resource>
+        </resources>
+    </acl>
+</config>
