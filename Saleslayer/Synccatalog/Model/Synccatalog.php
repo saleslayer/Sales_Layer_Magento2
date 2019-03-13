@@ -169,6 +169,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
     protected $product_model;
     protected $format_model;
 
+    protected $products_not_synced                  = array();
     protected $deleted_stored_categories_ids        = array();
 
     protected $media_field_names                    = array();
@@ -1053,6 +1054,8 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                             if (isset($product_data_to_store['product_data']) && !empty($product_data_to_store['product_data'])){
 
+                                $arrayReturn['products_to_sync'] = count($product_data_to_store['product_data']);
+
                                 $products_to_sync = $product_data_to_store['product_data'];
                                 unset($product_data_to_store['product_data']);
                                 $product_params = array_merge($product_data_to_store, $sync_params);
@@ -1067,6 +1070,10 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                                     
                                 }
                                 
+                            }else{
+
+                                $arrayReturn['products_to_sync'] = 0;
+
                             }
 
                         }
@@ -1075,6 +1082,21 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                     case 'product_formats':
                         
                         $item_type = 'product_format';
+
+                        if (!empty($this->products_not_synced) && count($modified_data) > 0){
+
+                            foreach ($modified_data as $keyForm => $format) {
+                        
+                                if (isset($this->products_not_synced[$format['products_id']])){
+
+                                    $this->debbug('## Error. The Format with SL ID '.$format['id'].' has no product parent to synchronize.');
+                                    unset($modified_data[$keyForm]);
+                                    
+                                }
+
+                            }
+
+                        }
 
                         $this->debbug('Total count of sync product formats to store: '.count($modified_data));
                         if ($this->sl_DEBBUG > 1) $this->debbug('Product formats data: '.print_r($modified_data,1));
@@ -1592,7 +1614,23 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         
         if (!empty($arrayProducts)){
 
-            $product_data_to_store['product_data'] = $arrayProducts;
+            foreach ($arrayProducts as $keyProd => $product) {
+
+                if (empty($product['catalogue_id'])){
+
+                    $this->debbug('## Error. Product '.$product['data'][$this->product_field_name].' with SL ID '.$product['id'].' has no categories.');
+                    $this->products_not_synced[$product['id']] = 0;
+                    unset($arrayProducts[$keyProd]);
+
+                }
+
+            }
+
+            if (!empty($arrayProducts)){
+
+                $product_data_to_store['product_data'] = $arrayProducts;
+
+            }
 
         }
         
@@ -1778,7 +1816,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                         $path = $category_col['path'];
                         $path_ids = explode('/', $path);
                         
-                        if (isset($path_ids[1]) && $path_ids[1] == $this->saleslayer_root_category_id){
+                        if (isset($path_ids[1]) && isset($this->categories_collection[$path_ids[1]]) && $this->categories_collection[$path_ids[1]]['parent_id'] == 1){
 
                             $category_id_found = $category_col['entity_id'];
                             break;
@@ -2773,9 +2811,8 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
     private function create_product ($product) {
 
         $categoryIds = $this->findProductCategoryIds($product['catalogue_id']);
-
         if (empty($categoryIds)){
-            $this->debbug('## Error. Product has no valid categories.');
+            $this->debbug('## Error. Product '.$product['data'][$this->product_field_name].' with SL ID '.$product['id'].' has no valid categories.');
             return false;
         }
 
@@ -2930,17 +2967,17 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
      */
     private function sync_product_core_data($product){
         
+        $categoryIds = $this->findProductCategoryIds($product['catalogue_id']);
+        if (empty($categoryIds)){
+            $this->debbug('## Error. Product '.$product['data'][$this->product_field_name].' with SL ID '.$product['id'].' has no valid categories.');
+            return false;
+        }
+
         $product_modified = false;
 
         $sl_id = $product['id'];
         $sl_data = $product['data'];
         $sl_name = $sl_data[$this->product_field_name];
-
-        $categoryIds = $this->findProductCategoryIds($product['catalogue_id']);
-        if (empty($categoryIds)){
-            $this->debbug('## Error. Product has no valid categories.');
-            return false;
-        }
               
         $this->debbug(" > Updating product core data ID: $sl_id (parent IDs: ".print_r($categoryIds,1).')');
 
@@ -4667,7 +4704,13 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                 if (in_array($all_stores_view_id, $this->store_view_ids)){
 
-                    $option_value_found = array_search($attribute_option_id, $this->attributes_collection[$attribute_set_id][$attribute_id]['options'][$all_stores_view_id]);
+                    $option_value_found = false;
+
+                    if (isset($this->attributes_collection[$attribute_set_id][$attribute_id]['options'][$all_stores_view_id])){
+
+                        $option_value_found = array_search($attribute_option_id, $this->attributes_collection[$attribute_set_id][$attribute_id]['options'][$all_stores_view_id]);
+
+                    }
 
                     if (!$option_value_found){ $option_value_found = $attribute_option_value; }
 
