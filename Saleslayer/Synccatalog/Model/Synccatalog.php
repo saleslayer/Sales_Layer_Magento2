@@ -3690,19 +3690,13 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                     default:
                         $additional_field_value = '';
                         if (is_array($sl_data[$field_name_value])){
-                            foreach ($sl_data[$field_name_value] as $value) {
-                                if ($additional_field_value == ''){
-                                    $additional_field_value = $value;
-                                }else{
-                                    $additional_field_value .= ', '.$value;
-                                }
-                            }
+                            $additional_field_value = implode(', ', array_filter($sl_data[$field_name_value], array($this, 'array_filter_empty_value')));
                         }else{
                             $additional_field_value = $sl_data[$field_name_value];
                         }
 
                         $additional_field_value = $this->sl_check_html_text($additional_field_value);
-                        if ($update_product->getData($field_name) != $additional_field_value){
+                        if ($update_product->getData($field_name) !== $additional_field_value){
 
                             $update_product->setData($field_name, $additional_field_value);
                             $product_modified = true;
@@ -5315,19 +5309,13 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                                 default:
                                     $additional_field_value = '';
                                     if (is_array($sl_format_option)){
-                                        foreach ($sl_format_option as $value) {
-                                            if ($additional_field_value == ''){
-                                                $additional_field_value = $value;
-                                            }else{
-                                                $additional_field_value .= ', '.$value;
-                                            }
-                                        }
+                                        $additional_field_value = implode(', ', array_filter($sl_format_option, array($this, 'array_filter_empty_value')));
                                     }else{
                                         $additional_field_value = $sl_format_option;
                                     }
 
                                     $additional_field_value = $this->sl_check_html_text($additional_field_value);
-                                    if ($form_product->getData($sl_format_title_name) != $additional_field_value){
+                                    if ($form_product->getData($sl_format_title_name) !== $additional_field_value){
                                    
                                         $form_product->setData($sl_format_title_name, $additional_field_value);
                                         $format_modified = true;
@@ -8661,5 +8649,16 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
        return $response;
 
    }
+
+    /**
+     * Function to filter empty and null values
+     * @param  string or integer    $value     value to filter
+     * @return integer         returns 1 if value is not empty or null
+     */
+    public function array_filter_empty_value($value){
+
+        return !(trim($value) === "" || $value === null);
+
+    }
 
 }
