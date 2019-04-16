@@ -33,6 +33,7 @@ use \Magento\Indexer\Model\Indexer as indexer;
 use \Magento\Indexer\Model\Indexer\Collection as indexerCollection;
 use \Magento\Framework\App\ResourceConnection as resourceConnection;
 use \Magento\Eav\Model\ResourceModel\Entity\Attribute\Option\Collection as collectionOption;
+use \Magento\Cron\Model\Schedule as cronSchedule;
 
 /**
  * Class Saleslayer_Synccatalog_Model_Syncdatacron
@@ -80,6 +81,7 @@ class Syncdatacron extends Synccatalog{
                 indexerCollection $indexerCollection,
                 resourceConnection $resourceConnection,
                 collectionOption $collectionOption,
+                cronSchedule $cronSchedule,
                 resource $resource = null,
                 resourceCollection $resourceCollection = null,
                 array $data = []) {
@@ -106,6 +108,7 @@ class Syncdatacron extends Synccatalog{
                             $indexerCollection,
                             $resourceConnection,
                             $collectionOption,
+                            $cronSchedule,
                             $resource,
                             $resourceCollection,
                             $data);
@@ -214,7 +217,7 @@ class Syncdatacron extends Synccatalog{
 
                         $flag_pid_is_alive = $this->has_pid_alive($current_flag['syncdata_pid']);
                         
-                        if ($flag_pid_is_alive > 1){
+                        if ($flag_pid_is_alive){
                         
                             try{
 
@@ -302,183 +305,234 @@ class Syncdatacron extends Synccatalog{
 
         $this->end_process = false;
 
-        $this->check_sync_data_flag();
+        if (!in_array($this->sync_data_hour_from, array('', null, 0)) || !in_array($this->sync_data_hour_until, array('', null, 0))){
+
+            $hour_from = $this->sync_data_hour_from.':00';
+            $hour_from_time = strtotime($hour_from);
+            $hour_until = $this->sync_data_hour_until.':00';
+            $hour_until_time = strtotime($hour_until);
+            $hour_now = date('H').':00';
+            $hour_now_time = strtotime($hour_now);
+        
+            if (($hour_from_time < $hour_until_time && $hour_now_time >= $hour_from_time && $hour_now_time <= $hour_until_time) || ($hour_from_time > $hour_until_time && ($hour_now_time >= $hour_from_time || $hour_now_time <= $hour_until_time)) || $hour_from_time == $hour_until_time){
+                
+                $this->debbug('Current hour '.$hour_now.' for sync data process.', 'syncdata');
+            
+            } else {
+            
+                $this->end_process = true;
+                $this->debbug('Current hour '.$hour_now.' is not set between hour from '.$hour_from.' and hour until '.$hour_until.'. Finishing sync data process.', 'syncdata');
+            
+            }
+
+        }
 
         if (!$this->end_process){
-            
-            try {
 
-                $items_to_delete = $this->connection->fetchAll(" SELECT * FROM ".$this->saleslayer_syncdata_table." WHERE sync_type = 'delete' ORDER BY item_type ASC, sync_tries ASC, id ASC");
+            $this->check_sync_data_flag();
+
+            if (!$this->end_process){
                 
-                if (!empty($items_to_delete)){
+                try {
+
+                    $items_to_delete = $this->connection->fetchAll(" SELECT * FROM ".$this->saleslayer_syncdata_table." WHERE sync_type = 'delete' ORDER BY item_type ASC, sync_tries ASC, id ASC");
                     
-                    $this->initialize_vars();
-
-                    foreach ($items_to_delete as $item_to_delete) {
+                    if (!empty($items_to_delete)){
                         
-                        $this->check_process_time();
-                        $this->check_sql_items_delete();
+                        $this->initialize_vars();
 
-                        if ($this->end_process){
-                            $this->debbug('Breaking syncdata process due to time limit.', 'syncdata');
-                            break;
+                        foreach ($items_to_delete as $item_to_delete) {
+                            
+                            $this->check_process_time();
+                            $this->check_sql_items_delete();
+
+                            if ($this->end_process){
+                                $this->debbug('Breaking syncdata process due to time limit.', 'syncdata');
+                                break;
+
+                            }else{
+
+                                $sync_tries = $item_to_delete['sync_tries'];
+
+                                $sync_params = json_decode(stripslashes($item_to_delete['sync_params']),1);
+                                $this->processing_connector_id = $sync_params['conn_params']['connector_id'];
+                                ($this->comp_id != $sync_params['conn_params']['comp_id']) ? $load_sl_multiconn_table_data = true : $load_sl_multiconn_table_data = false;
+                                $this->comp_id = $sync_params['conn_params']['comp_id'];
+                                if ($load_sl_multiconn_table_data){ $this->load_sl_multiconn_table_data(); }
+                                $this->store_view_ids = $sync_params['conn_params']['store_view_ids'];
+                                
+                                $item_data = json_decode(stripslashes($item_to_delete['item_data']),1);
+                                $sl_id = $item_data['sl_id'];
+                                
+                                switch ($item_to_delete['item_type']) {
+                                    case 'category':
+                                        
+                                        $result_delete = $this->delete_stored_category($sl_id);
+                                        break;
+                                    
+                                    case 'product':
+                                        
+                                        $result_delete = $this->delete_stored_product($sl_id);
+                                        break;
+
+                                    case 'product_format':
+                                        
+                                        $result_delete = $this->delete_stored_product_format($sl_id);
+                                        break;
+
+                                    default:
+                                        
+                                        $this->debbug('## Error. Incorrect item: '.print_R($item_to_delete,1), 'syncdata');
+                                        break;
+                                }
+
+                                switch ($result_delete) {
+                                    case 'item_not_deleted':
+                                        
+                                        $sync_tries++;
+
+                                        $sql_update = " UPDATE ".$this->saleslayer_syncdata_table.
+                                                                " SET sync_tries = ".$sync_tries.
+                                                                " WHERE id = ".$item_to_delete['id'];
+
+                                        $this->sl_connection_query($sql_update);
+
+                                        break;
+                                    
+                                    default:
+                                        
+                                        $this->sql_items_delete[] = $item_to_delete['id'];
+                                        break;
+
+                                }
+
+                            }
+
+                        }
+
+                        $this->reorganize_categories_after_delete();
+
+                    }
+
+                } catch (\Exception $e) {
+
+                    $this->debbug('## Error. Deleting syncdata process: '.$e->getMessage(), 'syncdata');
+
+                }
+
+                $indexes = array('category', 'product', 'product_format', 'product_links', 'product__images');
+
+                foreach ($indexes as $index) {
+                    
+                    $sql_check_try = 0;
+
+                    do{
+
+                        $items_to_update = $this->connection->fetchAll(" SELECT * FROM ".$this->saleslayer_syncdata_table." WHERE sync_type = 'update' and item_type = '".$index."' and sync_tries <= 2 ORDER BY item_type ASC, sync_tries ASC, id ASC LIMIT 1");
+
+                        if (!empty($items_to_update) && isset($items_to_update[0])){
+
+                            $this->initialize_vars();
+
+                            $this->check_process_time();
+
+                            if ($this->end_process){
+                            
+                                $this->debbug('Breaking syncdata process due to time limit.', 'syncdata');
+                                break;
+
+                            }else{
+
+                                $this->update_item($items_to_update[0]);
+
+                            }
 
                         }else{
 
-                            $sync_tries = $item_to_delete['sync_tries'];
+                            break;
 
-                            $sync_params = json_decode(stripslashes($item_to_delete['sync_params']),1);
-                            $this->processing_connector_id = $sync_params['conn_params']['connector_id'];
-                            ($this->comp_id != $sync_params['conn_params']['comp_id']) ? $load_sl_multiconn_table_data = true : $load_sl_multiconn_table_data = false;
-                            $this->comp_id = $sync_params['conn_params']['comp_id'];
-                            if ($load_sl_multiconn_table_data){ $this->load_sl_multiconn_table_data(); }
-                            $this->store_view_ids = $sync_params['conn_params']['store_view_ids'];
-                            
-                            $item_data = json_decode(stripslashes($item_to_delete['item_data']),1);
-                            $sl_id = $item_data['sl_id'];
-                            
-                            switch ($item_to_delete['item_type']) {
-                                case 'category':
-                                    
-                                    $result_delete = $this->delete_stored_category($sl_id);
-                                    break;
-                                
-                                case 'product':
-                                    
-                                    $result_delete = $this->delete_stored_product($sl_id);
-                                    break;
+                        }
+                        
+                        if ($this->end_process){
 
-                                case 'product_format':
-                                    
-                                    $result_delete = $this->delete_stored_product_format($sl_id);
-                                    break;
-
-                                default:
-                                    
-                                    $this->debbug('## Error. Incorrect item: '.print_R($item_to_delete,1), 'syncdata');
-                                    break;
-                            }
-
-                            switch ($result_delete) {
-                                case 'item_not_deleted':
-                                    
-                                    $sync_tries++;
-
-                                    $sql_update = " UPDATE ".$this->saleslayer_syncdata_table.
-                                                            " SET sync_tries = ".$sync_tries.
-                                                            " WHERE id = ".$item_to_delete['id'];
-
-                                    $this->sl_connection_query($sql_update);
-
-                                    break;
-                                
-                                default:
-                                    
-                                    $this->sql_items_delete[] = $item_to_delete['id'];
-                                    break;
-
-                            }
+                            break 2;
 
                         }
 
-                    }
+                    }while(!empty($items_to_update)); 
+                    
+                }
+                
+            }
 
-                    $this->reorganize_categories_after_delete();
+            $this->check_sql_items_delete(true);
+
+            if (!$this->end_process){
+
+                try{
+
+                    //Clear exceeded attemps
+                    
+                    $sql_delete = " DELETE FROM ".$this->saleslayer_syncdata_table." WHERE sync_tries >= 3";
+
+                    $this->sl_connection_query($sql_delete);
+
+                }catch(\Exception $e){
+
+                    $this->debbug('## Error. Clearing exceeded attemps: '.$e->getMessage(), 'syncdata');
 
                 }
 
-            } catch (\Exception $e) {
+                $items_processing = $this->connection->query(" SELECT count(*) as count FROM ".$this->saleslayer_syncdata_table." WHERE sync_type in('delete','update') and sync_tries <= 2")->fetch();
+            
+                if (isset($items_processing['count']) && $items_processing['count'] == 0){
 
-                $this->debbug('## Error. Deleting syncdata process: '.$e->getMessage(), 'syncdata');
+                    $indexer_data = $this->connection->query(" SELECT * FROM ".$this->saleslayer_syncdata_table." WHERE sync_type = 'reindex'")->fetch();
 
-            }
+                    if (!empty($indexer_data)){
+                        
+                        $indexers_info = json_decode(stripslashes($indexer_data['item_data']),1);
 
-            $indexes = array('category', 'product', 'product_format', 'product_links', 'product__images');
+                        foreach ($indexers_info as $indexer_id => $status) {
+                            
+                            $indexer = clone $this->indexer;
+                            $indexer->load($indexer_id);
 
-            foreach ($indexes as $index) {
-                
-                $sql_check_try = 0;
+                            try{
+                                
+                                $time_ini_indexer = microtime(1);
+                                $indexer->getState()->setStatus($status['status']);
+                                $indexer->getState()->save();
+                                $indexer->reindexAll();
+                                
+                                $this->debbug('## time_indexer to original value: '.(microtime(1) - $time_ini_indexer).' seconds.', 'timer');
 
-                do{
+                            }catch(\Exception $e){
 
-                    $items_to_update = $this->connection->fetchAll(" SELECT * FROM ".$this->saleslayer_syncdata_table." WHERE sync_type = 'update' and item_type = '".$index."' ORDER BY item_type ASC, sync_tries ASC, id ASC");
+                                $this->debbug('## Error. Updating indexer '.$indexer_id.' status back and reindexing: '.$e->getMessage(), 'syncdata');
 
-                    if (!empty($items_to_update)){
+                            }
+                        
+                        }
 
-                        $sql_check_try++;
-
-                        $this->update_items($items_to_update);
-
-                    }else{
-
-                        break;
+                        $this->sql_items_delete[] = $indexer_data['id'];
+                        $this->check_sql_items_delete(true);
 
                     }
 
-                    if ($this->end_process){
+                }
 
-                        break 2;
-
-                    }
-
-                }while($sql_check_try < 3);
-                
             }
             
-        }
+            try{
 
-        $this->check_sql_items_delete(true);
+                $this->disable_sync_data_flag();
+            
+            }catch(\Exception $e){
 
-        if (!$this->end_process){
-
-            $items_processing = $this->connection->query(" SELECT count(*) as count FROM ".$this->saleslayer_syncdata_table." WHERE sync_type in('delete','update') and sync_tries <= 2")->fetch();
-        
-            if (isset($items_processing['count']) && $items_processing['count'] == 0){
-
-                $indexer_data = $this->connection->query(" SELECT * FROM ".$this->saleslayer_syncdata_table." WHERE sync_type = 'reindex'")->fetch();
-
-                if (!empty($indexer_data)){
-                    
-                    $indexers_info = json_decode(stripslashes($indexer_data['item_data']),1);
-
-                    foreach ($indexers_info as $indexer_id => $status) {
-                        
-                        $indexer = clone $this->indexer;
-                        $indexer->load($indexer_id);
-
-                        try{
-                            
-                            $time_ini_indexer = microtime(1);
-                            $indexer->getState()->setStatus($status['status']);
-                            $indexer->getState()->save();
-                            $indexer->reindexAll();
-                            
-                            $this->debbug('## time_indexer to original value: '.(microtime(1) - $time_ini_indexer).' seconds.', 'timer');
-
-                        }catch(\Exception $e){
-
-                            $this->debbug('## Error. Updating indexer '.$indexer_id.' status back and reindexing: '.$e->getMessage(), 'syncdata');
-
-                        }
-                    
-                    }
-
-                    $this->sql_items_delete[] = $indexer_data['id'];
-                    $this->check_sql_items_delete(true);
-
-                }
+                $this->debbug('## Error. Deleting sync_data_flag: '.$e->getMessage(), 'syncdata');
 
             }
-
-        }
-        
-        try{
-
-            $this->disable_sync_data_flag();
-        
-        }catch(\Exception $e){
-
-            $this->debbug('## Error. Deleting sync_data_flag: '.$e->getMessage(), 'syncdata');
 
         }
 
@@ -489,294 +543,238 @@ class Syncdatacron extends Synccatalog{
     }
 
     /**
-     * Function to update items depending on type.
+     * Function to update item depending on type.
+     * @param  $item_to_update  item date to update in MG
      * @return void
      */
-    private function update_items($items_to_update){
-
-        $this->initialize_vars();
+    private function update_item($item_to_update){
+         
+        $sync_tries = $item_to_update['sync_tries'];
         
-        foreach ($items_to_update as $item_to_update) {
+        if ($item_to_update['sync_params'] != ''){
+
+            $sync_params = json_decode($item_to_update['sync_params'],1);
+            $this->processing_connector_id = $sync_params['conn_params']['connector_id'];
+            ($this->comp_id != $sync_params['conn_params']['comp_id']) ? $load_sl_multiconn_table_data = true : $load_sl_multiconn_table_data = false;
+            $this->comp_id = $sync_params['conn_params']['comp_id'];
+            if ($load_sl_multiconn_table_data){ $this->load_sl_multiconn_table_data(); }
+            $this->store_view_ids = $sync_params['conn_params']['store_view_ids'];
+            $this->website_ids = $sync_params['conn_params']['website_ids'];
+
+        }
+
+        $item_data = json_decode($item_to_update['item_data'],1);
+        
+        if ($item_data == ''){
+        
+            $this->debbug("## Error. Decoding item's data: ".print_R($item_to_update['item_data'],1), 'syncdata');
+            $result_update = '';
+        
+        }else{
             
-            $this->check_process_time();
-            $this->check_sql_items_delete();
-
-            if ($this->end_process){
-
-                $this->debbug('Breaking syncdata process due to time limit.', 'syncdata');
-                break;
-
-            }else{
-                
-                $sync_tries = $item_to_update['sync_tries'];
-                
-                if ($item_to_update['sync_params'] != ''){
-
-                    $sync_params = json_decode($item_to_update['sync_params'],1);
-                    $this->processing_connector_id = $sync_params['conn_params']['connector_id'];
-                    ($this->comp_id != $sync_params['conn_params']['comp_id']) ? $load_sl_multiconn_table_data = true : $load_sl_multiconn_table_data = false;
-                    $this->comp_id = $sync_params['conn_params']['comp_id'];
-                    if ($load_sl_multiconn_table_data){ $this->load_sl_multiconn_table_data(); }
-                    $this->store_view_ids = $sync_params['conn_params']['store_view_ids'];
-                    $this->website_ids = $sync_params['conn_params']['website_ids'];
-
-                }
-        
-                $item_data = json_decode($item_to_update['item_data'],1);
-                
-                if ($item_data == ''){
-                
-                    $this->debbug("## Error. Decoding item's data: ".print_R($item_to_update['item_data'],1), 'syncdata');
-                    $result_update = '';
-                
-                }else{
+            switch ($item_to_update['item_type']) {
+                case 'category':
                     
-                    switch ($item_to_update['item_type']) {
-                        case 'category':
-                            
-                            $this->default_category_id = $sync_params['default_category_id'];
-                            $this->category_is_anchor = $sync_params['category_is_anchor'];
-                            $this->category_page_layout = $sync_params['category_page_layout'];
-                            
-                            foreach ($this->category_fields as $category_field) {
-                                
-                                if (isset($sync_params['category_fields'][$category_field])){
-
-                                    $this->$category_field = $sync_params['category_fields'][$category_field];
-
-                                }
-
-                            }
-
-                            if (isset($sync_params['catalogue_media_field_names']) && !empty($sync_params['catalogue_media_field_names'])){
-
-                                $this->media_field_names['catalogue'] = $sync_params['catalogue_media_field_names'];
-
-                            }
-                            
-                            $time_ini_sync_stored_category = microtime(1);
-                            $this->debbug(' >> Category synchronization initialized << ');
-                            $result_update = $this->sync_stored_category($item_data);
-                            $this->debbug(' >> Category synchronization finished << ');
-                            $this->debbug('#### time_sync_stored_category: '.(microtime(1) - $time_ini_sync_stored_category).' seconds.', 'timer');
-                            break;
+                    $this->default_category_id = $sync_params['default_category_id'];
+                    $this->category_is_anchor = $sync_params['category_is_anchor'];
+                    $this->category_page_layout = $sync_params['category_page_layout'];
+                    
+                    foreach ($this->category_fields as $category_field) {
                         
-                        case 'product':
-                            
-                            $this->attribute_set_collection = $sync_params['attribute_set_collection'];
-                            $this->default_attribute_set_id = $sync_params['default_attribute_set_id'];
-                            $this->avoid_stock_update = $sync_params['avoid_stock_update'];
-                            $this->products_previous_categories = $sync_params['products_previous_categories'];
-                            
-                            foreach ($this->product_fields as $product_field) {
-                                
-                                if (isset($sync_params['product_fields'][$product_field])){
+                        if (isset($sync_params['category_fields'][$category_field])){
 
-                                    if ($product_field == 'image_extensions'){
-
-                                        foreach ($sync_params['product_fields'][$product_field] as $extension_name => $extension_value) {
-                                        
-                                            $this->$extension_name = $extension_value;
-
-                                        }
-                                        continue;
-
-                                    }
-
-                                    $this->$product_field = $sync_params['product_fields'][$product_field];
-                                    
-                                }
-
-                            }
-
-                            if (isset($sync_params['product_additional_fields']) && !empty($sync_params['product_additional_fields'])){
-
-                                foreach ($sync_params['product_additional_fields'] as $field_name => $field_name_value) {
-                                    
-                                    $this->product_additional_fields[$field_name] = $field_name_value;
-
-                                }
-
-                            }
-
-                            if (isset($sync_params['products_media_field_names']) && !empty($sync_params['products_media_field_names'])){
-
-                                $this->media_field_names['products'] = $sync_params['products_media_field_names'];
-
-                            }
-                            
-                            $time_ini_sync_stored_product = microtime(1);
-                            $this->debbug(' >> Product synchronization initialized << ');
-                            $result_update = $this->sync_stored_product($item_data);
-                            $this->debbug(' >> Product synchronization finished << ');
-                            $this->debbug('#### time_sync_stored_product: '.(microtime(1) - $time_ini_sync_stored_product).' seconds.', 'timer');
-                            break;
-
-                        case 'product_format':
-                            
-                            $this->avoid_stock_update = $sync_params['avoid_stock_update'];
-                            $this->format_configurable_attributes = $sync_params['format_configurable_attributes'];
-
-                            foreach ($this->product_format_fields as $product_format_field) {
-                                
-                                if (isset($sync_params['product_format_fields'][$product_format_field])){
-
-                                    if ($product_format_field == 'image_extensions'){
-
-                                        foreach ($sync_params['product_format_fields'][$product_format_field] as $extension_name => $extension_value) {
-                                            
-                                            $this->$extension_name = $extension_value;
-
-                                        }
-
-                                        continue;
-
-                                    }
-                                    
-                                    $this->$product_format_field = $sync_params['product_format_fields'][$product_format_field];
-
-                                }
-
-                            }
-
-                            if (isset($sync_params['product_formats_media_field_names']) && !empty($sync_params['product_formats_media_field_names'])){
-
-                                $this->media_field_names['product_formats'] = $sync_params['product_formats_media_field_names'];
-
-                            }
-                            
-                            $time_ini_sync_stored_product_format = microtime(1);
-                            $this->debbug(' >> Format synchronization initialized << ');
-                            $result_update = $this->sync_stored_product_format($item_data);
-                            $this->debbug(' >> Format synchronization finished << ');
-                            $this->debbug('#### time_sync_stored_product_format: '.(microtime(1) - $time_ini_sync_stored_product_format).' seconds.', 'timer');
-                            break;
-
-                        case 'product_links':
-                            
-                            $time_ini_sync_stored_product_links = microtime(1);
-                            $this->debbug(' >> Product links synchronization initialized << ');
-                            $this->sync_stored_product_links($item_data);
-                            $this->debbug(' >> Product links synchronization finished << ');
-                            $result_update = 'item_updated';
-                            $this->debbug('#### time_sync_stored_product_links: '.(microtime(1) - $time_ini_sync_stored_product_links).' seconds.', 'timer');
-                            break;
-
-                        case 'product__images':
-                        
-                            $result_update = 'item_updated';
-                            
-                            if (!isset($item_data['product_id']) && !isset($item_data['format_id'])){
-
-                                $this->debbug('## Error. Updating item images - Unknown index: '.print_R($item_data,1), 'syncdata');
-
-                            }else{
-
-                                $item_index = 'product';
-
-                                if (isset($item_data['format_id'])){
-
-                                    $item_index = 'format';
-
-                                }
-
-                                $time_ini_sync_stored_product_images = microtime(1);
-                                $this->debbug(' >> '.ucfirst($item_index).' images synchronization initialized << ');
-                                $this->sync_stored_product_images($item_data, $item_index);
-                                $this->debbug(' >> '.ucfirst($item_index).' images synchronization finished << ');
-                                $this->debbug('#### time_sync_stored_product_images: '.(microtime(1) - $time_ini_sync_stored_product_images).' seconds.', 'timer');
-                            }
-
-                            break;
-
-                        default:
-                            
-                            $this->debbug('## Error. Incorrect item: : '.print_R($item_to_update,1), 'syncdata');
-                            break;
-                    }
-
-                }
-
-                switch ($result_update) {
-                    case 'item_not_updated':
-                        
-                        $sync_tries++;
-                        
-                        if ($sync_tries == 2 && $item_to_update['item_type'] == 'category'){
-
-                            $resultado = $this->reorganize_category_parent_ids($item_data);
-
-                            $sql_update = " UPDATE ".$this->saleslayer_syncdata_table.
-                                                    " SET sync_tries = ".$sync_tries.", ".
-                                                    " item_data = '".json_encode($resultado)."'".
-                                                    " WHERE id = ".$item_to_update['id'];
-
-                            $this->sl_connection_query($sql_update);
-
-                        }else{
-                            
-                            $sql_update = " UPDATE ".$this->saleslayer_syncdata_table.
-                                                    " SET sync_tries = ".$sync_tries.
-                                                    " WHERE id = ".$item_to_update['id'];
-
-                            $this->sl_connection_query($sql_update);
+                            $this->$category_field = $sync_params['category_fields'][$category_field];
 
                         }
 
-                        break;
+                    }
+
+                    if (isset($sync_params['catalogue_media_field_names']) && !empty($sync_params['catalogue_media_field_names'])){
+
+                        $this->media_field_names['catalogue'] = $sync_params['catalogue_media_field_names'];
+
+                    }
                     
-                    default:
+                    $time_ini_sync_stored_category = microtime(1);
+                    $this->debbug(' >> Category synchronization initialized << ');
+                    $result_update = $this->sync_stored_category($item_data);
+                    $this->debbug(' >> Category synchronization finished << ');
+                    $this->debbug('#### time_sync_stored_category: '.(microtime(1) - $time_ini_sync_stored_category).' seconds.', 'timer');
+                    break;
+                
+                case 'product':
+                    
+                    $this->attribute_set_collection = $sync_params['attribute_set_collection'];
+                    $this->default_attribute_set_id = $sync_params['default_attribute_set_id'];
+                    $this->avoid_stock_update = $sync_params['avoid_stock_update'];
+                    $this->products_previous_categories = $sync_params['products_previous_categories'];
+                    
+                    foreach ($this->product_fields as $product_field) {
                         
-                        $this->sql_items_delete[] = $item_to_update['id'];
-                        break;
+                        if (isset($sync_params['product_fields'][$product_field])){
+
+                            if ($product_field == 'image_extensions'){
+
+                                foreach ($sync_params['product_fields'][$product_field] as $extension_name => $extension_value) {
+                                
+                                    $this->$extension_name = $extension_value;
+
+                                }
+                                continue;
+
+                            }
+
+                            $this->$product_field = $sync_params['product_fields'][$product_field];
+                            
+                        }
+
+                    }
+
+                    if (isset($sync_params['product_additional_fields']) && !empty($sync_params['product_additional_fields'])){
+
+                        foreach ($sync_params['product_additional_fields'] as $field_name => $field_name_value) {
+                            
+                            $this->product_additional_fields[$field_name] = $field_name_value;
+
+                        }
+
+                    }
+
+                    if (isset($sync_params['products_media_field_names']) && !empty($sync_params['products_media_field_names'])){
+
+                        $this->media_field_names['products'] = $sync_params['products_media_field_names'];
+
+                    }
+                    
+                    $time_ini_sync_stored_product = microtime(1);
+                    $this->debbug(' >> Product synchronization initialized << ');
+                    $result_update = $this->sync_stored_product($item_data);
+                    $this->debbug(' >> Product synchronization finished << ');
+                    $this->debbug('#### time_sync_stored_product: '.(microtime(1) - $time_ini_sync_stored_product).' seconds.', 'timer');
+                    break;
+
+                case 'product_format':
+                    
+                    $this->avoid_stock_update = $sync_params['avoid_stock_update'];
+                    $this->format_configurable_attributes = $sync_params['format_configurable_attributes'];
+
+                    foreach ($this->product_format_fields as $product_format_field) {
+                        
+                        if (isset($sync_params['product_format_fields'][$product_format_field])){
+
+                            if ($product_format_field == 'image_extensions'){
+
+                                foreach ($sync_params['product_format_fields'][$product_format_field] as $extension_name => $extension_value) {
+                                    
+                                    $this->$extension_name = $extension_value;
+
+                                }
+
+                                continue;
+
+                            }
+                            
+                            $this->$product_format_field = $sync_params['product_format_fields'][$product_format_field];
+
+                        }
+
+                    }
+
+                    if (isset($sync_params['product_formats_media_field_names']) && !empty($sync_params['product_formats_media_field_names'])){
+
+                        $this->media_field_names['product_formats'] = $sync_params['product_formats_media_field_names'];
+
+                    }
+                    
+                    $time_ini_sync_stored_product_format = microtime(1);
+                    $this->debbug(' >> Format synchronization initialized << ');
+                    $result_update = $this->sync_stored_product_format($item_data);
+                    $this->debbug(' >> Format synchronization finished << ');
+                    $this->debbug('#### time_sync_stored_product_format: '.(microtime(1) - $time_ini_sync_stored_product_format).' seconds.', 'timer');
+                    break;
+
+                case 'product_links':
+                    
+                    $time_ini_sync_stored_product_links = microtime(1);
+                    $this->debbug(' >> Product links synchronization initialized << ');
+                    $this->sync_stored_product_links($item_data);
+                    $this->debbug(' >> Product links synchronization finished << ');
+                    $result_update = 'item_updated';
+                    $this->debbug('#### time_sync_stored_product_links: '.(microtime(1) - $time_ini_sync_stored_product_links).' seconds.', 'timer');
+                    break;
+
+                case 'product__images':
+                
+                    $result_update = 'item_updated';
+                    
+                    if (!isset($item_data['product_id']) && !isset($item_data['format_id'])){
+
+                        $this->debbug('## Error. Updating item images - Unknown index: '.print_R($item_data,1), 'syncdata');
+
+                    }else{
+
+                        $item_index = 'product';
+
+                        if (isset($item_data['format_id'])){
+
+                            $item_index = 'format';
+
+                        }
+
+                        $time_ini_sync_stored_product_images = microtime(1);
+                        $this->debbug(' >> '.ucfirst($item_index).' images synchronization initialized << ');
+                        $this->sync_stored_product_images($item_data, $item_index);
+                        $this->debbug(' >> '.ucfirst($item_index).' images synchronization finished << ');
+                        $this->debbug('#### time_sync_stored_product_images: '.(microtime(1) - $time_ini_sync_stored_product_images).' seconds.', 'timer');
+                    }
+
+                    break;
+
+                default:
+                    
+                    $this->debbug('## Error. Incorrect item: : '.print_R($item_to_update,1), 'syncdata');
+                    break;
+            }
+
+        }
+
+        switch ($result_update) {
+            case 'item_not_updated':
+                
+                $sync_tries++;
+                
+                if ($sync_tries == 2 && $item_to_update['item_type'] == 'category'){
+
+                    $resultado = $this->reorganize_category_parent_ids($item_data);
+
+                    $sql_update = " UPDATE ".$this->saleslayer_syncdata_table.
+                                            " SET sync_tries = ".$sync_tries.", ".
+                                            " item_data = '".json_encode($resultado)."'".
+                                            " WHERE id = ".$item_to_update['id'];
+
+                    $this->sl_connection_query($sql_update);
+
+                }else{
+                    
+                    $sql_update = " UPDATE ".$this->saleslayer_syncdata_table.
+                                            " SET sync_tries = ".$sync_tries.
+                                            " WHERE id = ".$item_to_update['id'];
+
+                    $this->sl_connection_query($sql_update);
 
                 }
 
-            }
+                break;
+            
+            default:
+                
+                $this->sql_items_delete[] = $item_to_update['id'];
+                break;
 
         }
 
         $this->check_sql_items_delete(true);
 
-    }
-
-    /**
-     * Search the pid and return if it's still running or not
-     * @param  integer  $pid  pid to search
-     * @return boolean        status of pid running
-     */
-    public function has_pid_alive ($pid) {
-
-        if ($pid) {
-
-            if (strtolower(substr(PHP_OS, 0, 3)) == 'win') {
-
-                $wmi = new \COM('winmgmts://');
-                $prc = $wmi->ExecQuery("SELECT ProcessId FROM Win32_Process WHERE ProcessId='$pid'");
-
-                if (count($prc) > 0) { $i = 0; foreach ($prc as $a) { ++$i; }}
-
-                if ($this->sl_DEBBUG > 2){ $this->debbug("Searching active process pid '$pid' by Windows. Is active? ".($i > 0 ? 'Yes' : 'No')); }
-
-                return ($i > 0 ? true : false);
-
-            } else if (function_exists('posix_getpgid')) {
-
-                if ($this->sl_DEBBUG > 2) { $this->debbug("Searching active process pid '$pid' by posix_getpgid. Is active? ".(posix_getpgid($pid) ? 'Yes' : 'No')); }
-
-                return (posix_getpgid($pid) ? true : false);
-
-            } else {
-
-                if ($this->sl_DEBBUG > 2) { $this->debbug("Searching active process pid '$pid' by ps -p. Is active? ".(shell_exec("ps -p $pid | wc -l") > 1 ? 'Yes' : 'No')); }
-
-                if (shell_exec("ps -p $pid | wc -l") > 1) { return true; }
-
-            }
-        }
-
-        return false;
-        
     }
 
 }

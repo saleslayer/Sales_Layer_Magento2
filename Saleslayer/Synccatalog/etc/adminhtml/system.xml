@@ -27,6 +27,23 @@
                     <backend_model>Saleslayer\Synccatalog\Model\Config\SqlInsertLimit\BackendModel</backend_model>
                     <validate>validate-digits</validate>
                 </field>
+                <field id="avoid_images_updates" translate="label comment" type="select" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Avoid images updates</label>
+                    <comment>Images will not be updated. This will speed up the process and allow only to synchronize the rest of catalogue information. Enable it only when you want to synchronize a big catalogue.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="sync_data_hour_from" translate="label comment" sortOrder="5" showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Synchronize data from this hour</label>
+                    <comment>For this hour to work you need to fill in the hour UNTIL. Please enter a value between at least 0 and 23. Empty or set both to 0 to cancel this option.</comment>
+                    <backend_model>Saleslayer\Synccatalog\Model\Config\SyncdataHour\BackendModel</backend_model>
+                    <validate>validate-digits</validate>
+                </field>
+                <field id="sync_data_hour_until" translate="label comment" sortOrder="6" showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Until this hour</label>
+                    <comment>For this hour to work you need to fill in the hour FROM. Please enter a value between at least 0 and 23. Empty or set both to 0 to cancel this option.</comment>
+                    <backend_model>Saleslayer\Synccatalog\Model\Config\SyncdataHour\BackendModel</backend_model>
+                    <validate>validate-digits</validate>
+                </field>
             </group>
         </section>
     </system>

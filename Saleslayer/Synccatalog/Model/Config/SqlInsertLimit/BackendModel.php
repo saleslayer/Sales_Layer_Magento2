@@ -9,21 +9,18 @@ use Magento\Framework\App\Config\Value;
 use Magento\Framework\Exception\LocalizedException;
 
 /**
- * Backend model for the admin/security/session_lifetime configuration field. Validates session lifetime.
+ * Backend model for the Sql insert limit option field. Validates integer value.
  * @api
  * @since 100.1.0
  */
 class BackendModel extends Value
 {
-    /** Maximum dmin session lifetime; 1 year*/
+    /** Maximum sql rows*/
     const MAX_LIMIT = 20;
 
-    /** Minimum admin session lifetime */
+    /** Minimum sql rows */
     const MIN_LIMIT = 1;
 
-    /**
-     * @since 100.1.0
-     */
     public function beforeSave()
     {
         $value = (int) $this->getValue();
