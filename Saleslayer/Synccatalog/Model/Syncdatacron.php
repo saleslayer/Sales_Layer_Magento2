@@ -209,7 +209,7 @@ class Syncdatacron extends Synccatalog{
 
                     }else{
                         
-                        if ($this->syncdata_pid !== $current_flag['syncdata_pid']){
+                        if ($this->syncdata_pid === $current_flag['syncdata_pid']){
 
                             $this->debbug('Pid is the same as current.', 'syncdata');
 
@@ -221,14 +221,22 @@ class Syncdatacron extends Synccatalog{
                         
                             try{
 
-                                $this->debbug('Killing pid: '.$current_flag['syncdata_pid'], 'syncdata');
-                                shell_exec("kill -9 ".$current_flag['syncdata_pid']);
-                        
+                                $this->debbug('Killing pid: '.$current_flag['syncdata_pid'].' with user: '.get_current_user(), 'syncdata');
+                                
+                                $result_kill = posix_kill($current_flag['syncdata_pid'], 0);
+
+                                if (!$result_kill){
+
+                                    $this->debbug('## Error. Could not kill pid '.$current_flag['syncdata_pid'], 'syncdata');
+
+                                }
+
                             }catch(\Exception $e){
                         
                                 $this->debbug('## Error. Exception killing pid '.$current_flag['syncdata_pid'].': '.print_r($e->getMessage(),1), 'syncdata');
                         
                             }
+                                                        
                         }
 
                         $sl_query_flag_to_update = " UPDATE ".$this->saleslayer_syncdata_flag_table.
@@ -439,7 +447,7 @@ class Syncdatacron extends Synccatalog{
                             if ($this->end_process){
                             
                                 $this->debbug('Breaking syncdata process due to time limit.', 'syncdata');
-                                break;
+                                break 2;
 
                             }else{
 

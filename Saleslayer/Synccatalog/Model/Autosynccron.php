@@ -181,7 +181,7 @@ class Autosynccron extends Synccatalog{
 
         }
 
-        $running_crons = $this->connection->fetchAll(" SELECT * FROM ".$this->cron_schedule_table." WHERE job_code = 'Saleslayer_Synccatalog_Syncdatacron' AND status = 'running'");
+        $running_crons = $this->connection->fetchAll(" SELECT * FROM ".$this->cron_schedule_table." WHERE job_code = 'Saleslayer_Synccatalog_Syncdatacron' AND status = 'running' AND executed_at IS NOT NULL");
         
         foreach ($running_crons as $keyRC => $running_cron) {
             
@@ -226,7 +226,7 @@ class Autosynccron extends Synccatalog{
 
         $this->sl_time_ini_auto_sync_process = microtime(1);
         
-        $sql_processing = $this->connection->query(" SELECT count(*) as count FROM ".$this->saleslayer_syncdata_table)->fetch();
+        $items_processing = $this->connection->query(" SELECT count(*) as count FROM ".$this->saleslayer_syncdata_table)->fetch();
 
         if (isset($items_processing['count']) && $items_processing['count'] > 0){
 
