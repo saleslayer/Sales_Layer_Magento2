@@ -130,6 +130,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
     protected $product_field_upsell_references      = 'upsell_products_references';
     protected $product_field_attribute_set_id       = 'attribute_set_id';
     protected $product_path_base                    = BP.'/pub/media/catalog/product/';
+    protected $product_tmp_path_base                = BP.'/pub/media/tmp/catalog/product/';
     protected $product_images_sizes                 = array();
     protected $products_previous_categories;
 
@@ -2180,6 +2181,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                 }catch(\Exception $e){
                     $this->debbug('## Error. Reorganizing the category: '.$e->getMessage());
+                    return false;
                 }
 
             }
@@ -3965,7 +3967,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $items_modified = false;
         $existing_images_to_modify = array('delete' => array(), 'update' => array());
         
-        if (count($existing_items) > 0){
+        if (!empty($existing_items)){
             
             foreach ($existing_items as $keyItem => $item) {
 
@@ -4094,14 +4096,23 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
             $this->debbug('# time_check_waste: '.(microtime(1) - $time_ini_check_waste).' seconds.', 'timer');
 
             $time_ini_prepare_image = microtime(1);
-            $this->fileIo->checkAndCreateFolder($this->product_path_base);
-            $new_file_name = $this->product_path_base.baseName($main_image_to_process['url']);
+            $this->fileIo->checkAndCreateFolder($this->product_tmp_path_base.substr($image_filename, 0,1).'/'.substr($image_filename, 1,1).'/');
+            // $new_file_name = $this->product_path_base.baseName($main_image_to_process['url']);
+            $new_file_name = $this->product_tmp_path_base.substr($image_filename, 0,1).'/'.substr($image_filename, 1,1).'/'.$image_filename;
             $result = $this->fileIo->read($main_image_to_process['url'], $new_file_name);
             $exclude = $main_image_to_process['disabled'];
             
             if ($result) {
             
-                $update_product->addImageToMediaGallery($new_file_name, $main_image_to_process['media_attribute'], true, $exclude);
+                try{
+
+                    $update_product->addImageToMediaGallery($new_file_name, $main_image_to_process['media_attribute'], true, $exclude);
+               
+                } catch (\Exception $e) {
+                               
+                    $this->debbug('## Error. Adding main product image: '.$e->getMessage());
+               
+                }
 
             }
 
@@ -4197,35 +4208,39 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         if (isset($images_data['existing_images_to_modify']) && !empty($images_data['existing_images_to_modify'])){
         
             $time_ini_mod_all_items = microtime(1);
+            $existing_items = $update_product->getMediaGalleryEntries();
             $items_modified = false;
 
-            $existing_items = $update_product->getMediaGalleryEntries();
+            if (!empty($existing_items)){
 
-            foreach ($existing_items as $keyItem => $item) {
-                
-                $time_ini_item_get_data = microtime(1);
-                $item_data = $item->getData();
-                $this->debbug('# time_item_get_data: '.(microtime(1) - $time_ini_item_get_data).' seconds.', 'timer');
+                foreach ($existing_items as $keyItem => $item) {
+                    
+                    $time_ini_item_get_data = microtime(1);
+                    $item_data = $item->getData();
+                    $this->debbug('# time_item_get_data: '.(microtime(1) - $time_ini_item_get_data).' seconds.', 'timer');
 
-                $time_ini_mod_item = microtime(1);
+                    $time_ini_mod_item = microtime(1);
 
-                if (in_array($item_data['id'], $images_data['existing_images_to_modify']['delete'])){
+                    if (in_array($item_data['id'], $images_data['existing_images_to_modify']['delete'])){
 
-                    $this->galleryProcessor->removeImage($update_product, $item_data['file']);
-                    $items_modified = true;
+                        $this->galleryProcessor->removeImage($update_product, $item_data['file']);
+                        $items_modified = true;
+
+                    }
+
+                    if (in_array($item_data['id'], $images_data['existing_images_to_modify']['update'])){
+
+                        $this->galleryProcessor->updateImage($update_product, $item_data['file'], array('disabled' => $images_data['existing_images_to_modify']['update'][$item_data['id']]['disabled']));
+                        $items_modified = true;
+
+                    }
+
+                    $this->debbug('# time_mod_item: '.(microtime(1) - $time_ini_mod_item).' seconds.', 'timer');
 
                 }
-
-                if (in_array($item_data['id'], $images_data['existing_images_to_modify']['update'])){
-
-                    $this->galleryProcessor->updateImage($update_product, $item_data['file'], array('disabled' => $images_data['existing_images_to_modify']['update'][$item_data['id']]['disabled']));
-                    $items_modified = true;
-
-                }
-
-                $this->debbug('# time_mod_item: '.(microtime(1) - $time_ini_mod_item).' seconds.', 'timer');
-
+       
             }
+            
             $this->debbug('# time_mod_all_items: '.(microtime(1) - $time_ini_mod_all_items).' seconds.', 'timer');
             
             $time_ini_update_items = microtime(1);
@@ -4272,14 +4287,23 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                 $this->debbug('# time_check_waste: '.(microtime(1) - $time_ini_check_waste).' seconds.', 'timer');
 
                 $time_ini_prepare_image = microtime(1);
-                $this->fileIo->checkAndCreateFolder($this->product_path_base);
-                $new_file_name = $this->product_path_base.baseName($image_info['url']);
+                $this->fileIo->checkAndCreateFolder($this->product_tmp_path_base.substr($image_filename, 0,1).'/'.substr($image_filename, 1,1).'/');
+                // $new_file_name = $this->product_path_base.baseName($image_info['url']);
+                $new_file_name = $this->product_tmp_path_base.substr($image_filename, 0,1).'/'.substr($image_filename, 1,1).'/'.$image_filename;
                 $result = $this->fileIo->read($image_info['url'], $new_file_name);
                 $exclude = $image_info['disabled'];
                 
                 if ($result) {
                 
-                    $update_product->addImageToMediaGallery($new_file_name, $image_info['media_attribute'], true, $exclude);
+                    try{
+
+                        $update_product->addImageToMediaGallery($new_file_name, $image_info['media_attribute'], true, $exclude);
+                    
+                    } catch (\Exception $e) {
+                
+                        $this->debbug('## Error. Adding '.$item_index.' image: '.$e->getMessage());
+                    
+                    }
 
                 }
 
@@ -5896,7 +5920,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $items_modified = false;
         $existing_images_to_modify = array('delete' => array(), 'update' => array());
 
-        if (count($existing_items) > 0){
+        if (!empty($existing_items)){
 
             foreach ($existing_items as $keyItem => $item) {
                 
@@ -6025,14 +6049,23 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
             $this->debbug('# time_check_waste: '.(microtime(1) - $time_ini_check_waste).' seconds.', 'timer');
 
             $time_ini_prepare_image = microtime(1);
-            $this->fileIo->checkAndCreateFolder($this->product_path_base);
-            $new_file_name = $this->product_path_base.baseName($main_image_to_process['url']);
+            $this->fileIo->checkAndCreateFolder($this->product_tmp_path_base.substr($image_filename, 0,1).'/'.substr($image_filename, 1,1).'/');
+            // $new_file_name = $this->product_path_base.baseName($main_image_to_process['url']);
+            $new_file_name = $this->product_tmp_path_base.substr($image_filename, 0,1).'/'.substr($image_filename, 1,1).'/'.$image_filename;
             $result = $this->fileIo->read($main_image_to_process['url'], $new_file_name);
             $exclude = $main_image_to_process['disabled'];
             
             if ($result) {
             
-                $update_format->addImageToMediaGallery($new_file_name, $main_image_to_process['media_attribute'], true, $exclude);
+                try{
+                                                
+                    $update_format->addImageToMediaGallery($new_file_name, $main_image_to_process['media_attribute'], true, $exclude);
+                
+                } catch (\Exception $e) {
+                
+                    $this->debbug('## Error. Adding main format image: '.$e->getMessage());
+                
+                }
 
             }
 

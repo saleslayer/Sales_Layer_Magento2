@@ -275,7 +275,7 @@ class Data extends \Magento\Framework\App\Helper\AbstractHelper
                 }
 
                 $option = $this->optionFactory->create();
-                $option->setLabel($optionLabel);
+                $option->setLabel($label);
                 $option->setStoreLabels($option_labels);
                 $option->setSortOrder($sort_order);
                 $option->setIsDefault(false);
