@@ -1,4 +1,4 @@
-<h1><a href="https://saleslayer.com/" title="Title" rel="nofollow">Sales Layer</a> Magento 2 plugin</h1>
+<h1><a href="https://saleslayer.com/" title="Title">Sales Layer</a> Magento 2 plugin</h1>
 Sales Layer plugin allows you to easily synchronize your catalogue information with Magento 2.
 
 <h2>How To Start</h2>
