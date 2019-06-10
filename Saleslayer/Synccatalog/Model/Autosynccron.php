@@ -190,7 +190,7 @@ class Autosynccron extends Synccatalog{
 
             if ($interval >= 480){
 
-                $this->debbug('Killing cron job '.$running_cron['job_code'].' with schedule_id '.$running_cron['schedule_id'].'. Scheduled at '.$running_cron['scheduled_at'].', executed at '.$running_cron['executed_at'].' with time interval of '.$interval.' seconds.', 'autosync');
+                $this->debbug('Killing cron job '.$running_cron['job_code'].' with schedule_id '.$running_cron['schedule_id'].'. Scheduled at '.$running_cron['scheduled_at'].'('. strtotime($running_cron['scheduled_at']).'), executed at '.$running_cron['executed_at'].'('. strtotime($running_cron['scheduled_at']).') with time interval of '.$interval.' seconds.', 'autosync');
 
                 try{
 

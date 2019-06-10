@@ -252,6 +252,19 @@ class Syncdatacron extends Synccatalog{
 
             }else{
 
+                //Just to avoid having duplicated flags
+                try{
+
+                    $sql_delete = " DELETE FROM ".$this->saleslayer_syncdata_flag_table;
+
+                    $this->sl_connection_query($sql_delete);
+
+                }catch(\Exception $e){
+                
+                    $this->debbug('## Error. Cleaning sync_data_flag table before inserting: '.print_r($e->getMessage(),1), 'syncdata');
+                
+                }
+                
                 $sl_query_flag_to_insert = " INSERT INTO ".$this->saleslayer_syncdata_flag_table.
                                          " ( syncdata_pid, syncdata_last_date) VALUES ".
                                          "('".$this->syncdata_pid."', '".$date_now."')";

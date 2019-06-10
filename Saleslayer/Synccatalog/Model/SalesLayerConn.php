@@ -144,6 +144,10 @@ class SalesLayerConn {
         if ($this->connect_API_version   !== null)  $URL .= '&ver='.urlencode($this->connect_API_version);
         if ($this->__group_multicategory !== false) $URL .= '&group_category_id=1';
 
+        $URL .= '&parents_category_tree=1';
+        $URL .= '&first_parent_level=1';
+        $URL .= '&same_parent_variants=1';
+
         return $URL;
     }
 

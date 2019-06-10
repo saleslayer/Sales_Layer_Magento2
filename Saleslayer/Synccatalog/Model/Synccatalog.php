@@ -531,7 +531,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                 $config_record->setData($field_name, $field_value);
                 $config_record->save();
-                if ($this->sl_DEBBUG > 1) $this->debbug('Connector field: $field_name updated to: $field_value');
+                if ($this->sl_DEBBUG > 1) $this->debbug('Connector field: '.$field_name.' updated to: '.$field_value);
 
             }catch(\Exception $e){
             
@@ -3214,6 +3214,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $website_ids = array(1);
         if (!empty($this->website_ids)){ $website_ids = $this->website_ids; }
         if ($update_product->getWebsiteIds() != $website_ids){
+            $website_ids = array_unique(array_merge($update_product->getWebsiteIds(), $website_ids));
             $update_product->setWebsiteIds($website_ids);
             $product_modified = true;            
 
@@ -5038,6 +5039,14 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                             $form_product->setPrice('0'); 
                         }
                     }
+
+                    $website_ids = array(1);
+                    if (!empty($this->website_ids)){ $website_ids = $this->website_ids; }
+                    if ($form_product->getWebsiteIds() != $website_ids){
+                        $website_ids = array_unique(array_merge($form_product->getWebsiteIds(), $website_ids));
+                        $form_product->setWebsiteIds($website_ids);
+                        
+                    } 
 
                     if ($this->avoid_stock_update == '0'){
 
