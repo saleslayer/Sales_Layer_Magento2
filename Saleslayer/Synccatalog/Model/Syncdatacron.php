@@ -444,8 +444,6 @@ class Syncdatacron extends Synccatalog{
                 $indexes = array('category', 'product', 'product_format', 'product_links', 'product__images');
 
                 foreach ($indexes as $index) {
-                    
-                    $sql_check_try = 0;
 
                     do{
 
@@ -501,45 +499,6 @@ class Syncdatacron extends Synccatalog{
                 }catch(\Exception $e){
 
                     $this->debbug('## Error. Clearing exceeded attemps: '.$e->getMessage(), 'syncdata');
-
-                }
-
-                $items_processing = $this->connection->query(" SELECT count(*) as count FROM ".$this->saleslayer_syncdata_table." WHERE sync_type in('delete','update') and sync_tries <= 2")->fetch();
-            
-                if (isset($items_processing['count']) && $items_processing['count'] == 0){
-
-                    $indexer_data = $this->connection->query(" SELECT * FROM ".$this->saleslayer_syncdata_table." WHERE sync_type = 'reindex'")->fetch();
-
-                    if (!empty($indexer_data)){
-                        
-                        $indexers_info = json_decode(stripslashes($indexer_data['item_data']),1);
-
-                        foreach ($indexers_info as $indexer_id => $status) {
-                            
-                            $indexer = clone $this->indexer;
-                            $indexer->load($indexer_id);
-
-                            try{
-                                
-                                $time_ini_indexer = microtime(1);
-                                $indexer->getState()->setStatus($status['status']);
-                                $indexer->getState()->save();
-                                $indexer->reindexAll();
-                                
-                                $this->debbug('## time_indexer to original value: '.(microtime(1) - $time_ini_indexer).' seconds.', 'timer');
-
-                            }catch(\Exception $e){
-
-                                $this->debbug('## Error. Updating indexer '.$indexer_id.' status back and reindexing: '.$e->getMessage(), 'syncdata');
-
-                            }
-                        
-                        }
-
-                        $this->sql_items_delete[] = $indexer_data['id'];
-                        $this->check_sql_items_delete(true);
-
-                    }
 
                 }
 

@@ -274,6 +274,56 @@ class UpgradeSchema implements UpgradeSchemaInterface
             );
 
         }
+
+        if (version_compare($version, '2.2.2') < 0) {
+
+            $slyr_indexers_table = $connection->newTable(
+                $installer->getTable('saleslayer_synccatalog_indexers')
+            )->addColumn(
+                'id',
+                \Magento\Framework\DB\Ddl\Table::TYPE_BIGINT,
+                null,
+                ['identity' => true, 'unsigned' => true, 'nullable' => false, 'primary' => true],
+                'Id'
+            )->addColumn(
+                'sync_tries',
+                \Magento\Framework\DB\Ddl\Table::TYPE_INTEGER,
+                null,
+                ['nullable' => false, 'default' => 0],
+                'Sync Tries'
+            )->addColumn(
+                'indexer_id',
+                \Magento\Framework\DB\Ddl\Table::TYPE_TEXT,
+                255,
+                ['nullable' => false],
+                'Magento indexer id'
+            )->addColumn(
+                'indexer_title',
+                \Magento\Framework\DB\Ddl\Table::TYPE_TEXT,
+                255,
+                ['nullable' => true],
+                'Magento indexer title'
+            )->addColumn(
+                'indexer_status',
+                \Magento\Framework\DB\Ddl\Table::TYPE_TEXT,
+                255,
+                ['nullable' => false],
+                'Magento indexer status'
+            )->addIndex(
+                $installer->getIdxName(
+                    'saleslayer_synccatalog_indexers',
+                    ['id'],
+                    \Magento\Framework\DB\Adapter\AdapterInterface::INDEX_TYPE_INDEX
+                ),
+                ['id'],
+                ['type' => \Magento\Framework\DB\Adapter\AdapterInterface::INDEX_TYPE_INDEX]
+            )->setComment(
+                'Sales Layer Indexers Table'
+            );
+
+            $connection->createTable($slyr_indexers_table);
+            
+        }
  
         $setup->endSetup();
 

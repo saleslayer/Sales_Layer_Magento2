@@ -230,52 +230,62 @@ class Autosynccron extends Synccatalog{
 
         if (isset($items_processing['count']) && $items_processing['count'] > 0){
 
-            $this->debbug("There are still ".$items_processing['count']." items processing, wait until is finished and synchronize again.", 'autosync');
+            $this->debbug("There are still ".$items_processing['count']." items to process, wait until they have finished and synchronize again.", 'autosync');
            
         }else{
 
-            try {
+            $indexers_processing = $this->connection->query(" SELECT count(*) as count FROM ".$this->saleslayer_indexers_table)->fetch();
 
-                $all_connectors = $this->getConnectors();
-                
-                $now = strtotime('now');
-                
-                if (!empty($all_connectors)){
+            if (isset($indexers_processing['count']) && $indexers_processing['count'] > 0){
 
-                    $connectors_to_check = array();
+                $this->debbug("There are still ".$indexers_processing['count']." indexers to process, wait until they have finished and synchronize again.", 'autosync');
+               
+            }else{
 
-                    foreach ($all_connectors as $idx_conn => $connector) {
+                try {
 
-                        if ($connector['auto_sync'] > 0){
-                            
-                            $connector_last_sync = $connector['last_sync'];
-                            $connector_last_sync_unix = strtotime($connector_last_sync);
-                            
-                            $unix_to_update = $now - ($connector['auto_sync'] * 3600);
-                            
-                            if ($connector_last_sync_unix == ''){
+                    $all_connectors = $this->getConnectors();
+                    
+                    $now = strtotime('now');
+                    
+                    if (!empty($all_connectors)){
 
-                                $connector['unix_to_update'] = $unix_to_update;
-                                $connectors_to_check[] = $connector;
+                        $connectors_to_check = array();
 
-                            }else{
+                        foreach ($all_connectors as $idx_conn => $connector) {
+
+                            if ($connector['auto_sync'] > 0){
                                 
-                                if ($connector['auto_sync'] >= 24){
-                                    
-                                    $unix_to_update_hour = mktime($connector['auto_sync_hour'],0,0,date('m', $unix_to_update),date('d', $unix_to_update),date('Y', $unix_to_update));
-                                    
-                                    if ($connector_last_sync_unix < $unix_to_update_hour){
-                                    
-                                        $connector['unix_to_update'] = $unix_to_update_hour;
-                                        $connectors_to_check[] = $connector;
-
-                                    }
-
-
-                                }else if ($connector_last_sync_unix < $unix_to_update){
+                                $connector_last_sync = $connector['last_sync'];
+                                $connector_last_sync_unix = strtotime($connector_last_sync);
+                                
+                                $unix_to_update = $now - ($connector['auto_sync'] * 3600);
+                                
+                                if ($connector_last_sync_unix == ''){
 
                                     $connector['unix_to_update'] = $unix_to_update;
                                     $connectors_to_check[] = $connector;
+
+                                }else{
+                                    
+                                    if ($connector['auto_sync'] >= 24){
+                                        
+                                        $unix_to_update_hour = mktime($connector['auto_sync_hour'],0,0,date('m', $unix_to_update),date('d', $unix_to_update),date('Y', $unix_to_update));
+                                        
+                                        if ($connector_last_sync_unix < $unix_to_update_hour){
+                                        
+                                            $connector['unix_to_update'] = $unix_to_update_hour;
+                                            $connectors_to_check[] = $connector;
+
+                                        }
+
+
+                                    }else if ($connector_last_sync_unix < $unix_to_update){
+
+                                        $connector['unix_to_update'] = $unix_to_update;
+                                        $connectors_to_check[] = $connector;
+
+                                    }
 
                                 }
 
@@ -283,57 +293,57 @@ class Autosynccron extends Synccatalog{
 
                         }
 
-                    }
+                        if ($connectors_to_check){
 
-                    if ($connectors_to_check){
+                            uasort($connectors_to_check, array($this, 'sort_by_unix_to_update'));
 
-                        uasort($connectors_to_check, array($this, 'sort_by_unix_to_update'));
+                            foreach ($connectors_to_check as $connector) {
 
-                        foreach ($connectors_to_check as $connector) {
+                                if ($connector['auto_sync'] >= 24){
 
-                            if ($connector['auto_sync'] >= 24){
+                                    $last_sync_time = mktime($connector['auto_sync_hour'],0,0,date('m', $now),date('d', $now),date('Y', $now));
+                                    $last_sync = date('Y-m-d H:i:s', $last_sync_time);
+                                
+                                }else{
+                                
+                                    $last_sync = date('Y-m-d H:i:s');
+                                
+                                }
 
-                                $last_sync_time = mktime($connector['auto_sync_hour'],0,0,date('m', $now),date('d', $now),date('Y', $now));
-                                $last_sync = date('Y-m-d H:i:s', $last_sync_time);
-                            
-                            }else{
-                            
-                                $last_sync = date('Y-m-d H:i:s');
-                            
+                                $connector_id = $connector['connector_id'];
+
+                                $this->debbug("Connector to auto-synchronize: " . $connector_id, 'autosync');
+
+                                $time_ini_cron_sync = microtime(1);
+
+                                $time_random = rand(10, 20);
+                                sleep($time_random);
+                                $this->debbug("#### time_random: " . $time_random . ' seconds.', 'autosync');
+                                
+                                $data_return = $this->store_sync_data($connector_id, $last_sync);
+                                
+                                $this->debbug("#### time_cron_sync: " . (microtime(1) - $time_ini_cron_sync - $time_random) . ' seconds.', 'autosync');
+                                
+                                if (is_array($data_return)){ break; }
+                                
                             }
 
-                            $connector_id = $connector['connector_id'];
+                        }else{
 
-                            $this->debbug("Connector to auto-synchronize: " . $connector_id, 'autosync');
+                            $this->debbug("Currently there aren't connectors to synchronize.", 'autosync');
 
-                            $time_ini_cron_sync = microtime(1);
-
-                            $time_random = rand(10, 20);
-                            sleep($time_random);
-                            $this->debbug("#### time_random: " . $time_random . ' seconds.', 'autosync');
-                            
-                            $data_return = $this->store_sync_data($connector_id, $last_sync);
-                            
-                            $this->debbug("#### time_cron_sync: " . (microtime(1) - $time_ini_cron_sync - $time_random) . ' seconds.', 'autosync');
-                            
-                            if (is_array($data_return)){ break; }
-                            
                         }
-
+                  
                     }else{
 
-                        $this->debbug("Currently there aren't connectors to synchronize.", 'autosync');
+                        $this->debbug("There aren't any configured connectors.", 'autosync');
 
                     }
-              
-                }else{
+                } catch (\Exception $e) {
 
-                    $this->debbug("There aren't any configured connectors.", 'autosync');
+                    $this->debbug('## Error. Autosync process: '.$e->getMessage(), 'autosync');
 
                 }
-            } catch (\Exception $e) {
-
-                $this->debbug('## Error. Autosync process: '.$e->getMessage(), 'autosync');
 
             }
 

@@ -27,7 +27,7 @@ class Syncajaxcommands extends \Magento\Framework\App\Action\Action
     {
 
         $command = $this->getRequest()->getParam('command');
-        $permited_command = array('unlinkelements','infopreload','removelogs');
+        $permited_command = array('unlinkelements','infopreload','removelogs', 'deleteregs');
         /** @var \Magento\Framework\Controller\Result\Raw $response */
         $response = $this->resultFactory->create(ResultFactory::TYPE_RAW);
         $array_return = array();
@@ -50,14 +50,20 @@ class Syncajaxcommands extends \Magento\Framework\App\Action\Action
                     $response->setHeader('Content-type', 'text/plain');
                     $result_update = true;
                     break;
+                case 'deleteregs':
+                    $this->modelo->deleteSLRegs();
+                    $response->setHeader('Content-type', 'text/plain');
+                    $result_update = true;
+                    break;
                 default:
-                $result_update = false;
-                     break;
+                    $result_update = false;
+                    break;
             }
 
             $field_names = array('unlinkelements'     => 'Old elements unlink',
                                  'infopreload'        => 'Multi-connector information load',
-                                 'removelogs'       => 'Sales Layer logs delete'
+                                 'removelogs'       => 'Sales Layer logs delete',
+                                 'deleteregs'       => 'Sales Layer regs delete'
                                  );
             $message =  (isset($field_names[$command])) ? $field_names[$command] : $command;
 

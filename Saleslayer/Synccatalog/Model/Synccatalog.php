@@ -186,6 +186,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
     protected $saleslayer_multiconn_table           = 'saleslayer_synccatalog_multiconn';
     protected $saleslayer_syncdata_table            = 'saleslayer_synccatalog_syncdata';
     protected $saleslayer_syncdata_flag_table       = 'saleslayer_synccatalog_syncdata_flag';
+    protected $saleslayer_indexers_table            = 'saleslayer_synccatalog_indexers';
     protected $sl_multiconn_table_data;
  
     protected $catalog_category_product_table       = 'catalog_category_product';
@@ -274,6 +275,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $this->saleslayer_syncdata_table                = $this->resourceConnection->getTableName($this->saleslayer_syncdata_table);
         $this->saleslayer_syncdata_flag_table           = $this->resourceConnection->getTableName($this->saleslayer_syncdata_flag_table);
         $this->catalog_category_product_table           = $this->resourceConnection->getTableName($this->catalog_category_product_table);
+        $this->saleslayer_indexers_table                = $this->resourceConnection->getTableName($this->saleslayer_indexers_table);
 
     }
 
@@ -334,6 +336,10 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                     $file = BP.'/var/log/_debbug_log_saleslayer_sync_data_'.date('Y-m-d').'.dat';
                     break;
 
+                case 'indexers':
+                    $file = BP.'/var/log/_debbug_log_saleslayer_indexers_'.date('Y-m-d').'.dat';
+                    break;
+
                 default:
                     $file = BP.'/var/log/_debbug_log_saleslayer_'.date('Y-m-d').'.dat';
                     break;
@@ -386,7 +392,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         }
 
-        
     }
 
     /**
@@ -859,17 +864,24 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         
         $this->loadConfigParameters();
 
-        $sql_processing = $this->connection->query(" SELECT count(*) as count FROM ".$this->saleslayer_syncdata_table);
-
-        $items_processing = $sql_processing->fetch();
+        $items_processing = $this->connection->query(" SELECT count(*) as count FROM ".$this->saleslayer_syncdata_table)->fetch();
 
         if (isset($items_processing['count']) && $items_processing['count'] > 0){
 
-            $this->debbug("There are still ".$items_processing['count']." items processing, wait until is finished and synchronize again.");
-            return "There are still ".$items_processing['count']." items processing, wait until is finished and synchronize again.";
+           $this->debbug("There are still ".$items_processing['count']." items to process, wait until they have finished and synchronize again.");
+           return "There are still ".$items_processing['count']." items to process, wait until they have finished and synchronize again.";
 
-        }
-        
+       }
+
+       $indexers_processing = $this->connection->query(" SELECT count(*) as count FROM ".$this->saleslayer_indexers_table)->fetch();
+
+       if (isset($indexers_processing['count']) && $indexers_processing['count'] > 0){
+
+           $this->debbug("There are still ".$indexers_processing['count']." indexers to process, wait until they have finished and synchronize again.");
+           return "There are still ".$indexers_processing['count']." indexers to process, wait until they have finished and synchronize again.";
+
+       }
+               
         $this->debbug("\r\n==== Store Sync Data INIT ====\r\n");
 
         if ($last_sync == null){ $last_sync = date('Y-m-d H:i:s'); }
@@ -1166,6 +1178,10 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                                 }
                                 
+                            }else{
+
+                                $arrayReturn['product_formats_to_sync'] = 0;
+                                
                             }
 
                             unset($get_response_table_data[$nombre_tabla]['modified']);
@@ -1187,7 +1203,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                 $this->debbug('#### time_store_items_update - '.$item_type.': '.(microtime(1) - $time_ini_store_items_update).' seconds.');
 
             }
-
 
             if ($this->manage_indexers){
 
@@ -1214,33 +1229,53 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                 if ($stop_indexers){
 
-                    $indexers_info = array();
-
                     $indexer_collection_ids = $this->indexerCollection->getAllIds();
 
                     foreach ($indexer_collection_ids as $indexer_id) {
 
+                        $indexer_sql_to_insert = '';
                         $indexer = clone $this->indexer;
                         $indexer = $indexer->load($indexer_id);
 
                         try{
 
                             $time_ini_indexer = microtime(1);
-                            $indexers_info[$indexer_id]['status'] = $indexer->getState()->getStatus();
+
+                            $indexer_sql_to_insert = "('".$indexer_id."', '".$indexer->getTitle()."', '".$indexer->getState()->getStatus()."')";
+
                             $indexer->getState()->setStatus(\Magento\Framework\Indexer\StateInterface::STATUS_WORKING);
                             $indexer->getState()->save();
+
+
                             $this->debbug('## time_indexer to working: '.(microtime(1) - $time_ini_indexer).' seconds.', 'timer');
 
                         }catch(\Exception $e){
 
+                            $indexer_sql_to_insert = '';
                             $this->debbug('## Error. Updating indexer '.$indexer_id.' to working status: '.$e->getMessage(), 'syncdata');
+
+                        }
+                        
+                        if ($indexer_sql_to_insert != ''){
+
+                            try{
+
+                                $indexer_sql_query_to_insert = " INSERT INTO ".$this->saleslayer_indexers_table.
+                                                                 " ( indexer_id, indexer_title, indexer_status ) VALUES ".
+                                                                 $indexer_sql_to_insert;
+
+                                $this->connection->query($indexer_sql_query_to_insert);
+
+                            }catch(\Exception $e){
+
+                                $this->debbug('## Error. Insert indexer SQL message: '.$e->getMessage());
+                                $this->debbug('## Error. Insert indexer SQL query: '.$sql_query_to_insert);
+
+                            }
 
                         }
 
                     }
-
-                    $this->sql_to_insert[] = "('reindex', 'indexer', '".addslashes(json_encode($indexers_info))."', '')";
-                    $this->insert_syncdata_sql(true);
 
                 }
 
@@ -1761,7 +1796,26 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         }
 
-        $product_format_data_to_store['product_format_data'] = $arrayFormats;
+        if (!empty($arrayFormats)){
+
+            foreach ($arrayFormats as $keyForm => $format) {
+
+                if ($format['products_id'] == 0){
+
+                    $this->debbug('## Error. Format '.$format['data']['format_name'].' with SL ID '.$format['id'].' has no product parent.');
+                    unset($arrayFormats[$keyForm]);
+
+                }
+
+            }
+
+            if (!empty($arrayFormats)){
+
+                $product_format_data_to_store['product_format_data'] = $arrayFormats;
+
+            }
+
+        }
 
         return $product_format_data_to_store;
 
@@ -2953,6 +3007,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         $url_key = $sl_name;
         if ($sl_sku != ''){ $url_key.= '-'.$sl_sku; }
+
         $new_product->setAttributeSetId($sl_attribute_set_id)
                     ->setName($sl_name)
                     ->setUrlKey($url_key)
@@ -8773,6 +8828,81 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
        return $response;
 
    }
+
+    /**
+     * Function to delete Sales Layer regs.
+     * @return void
+     */
+    public function deleteSLRegs(){
+
+        $items_to_process = $this->connection->query(" SELECT count(*) as count FROM ".$this->saleslayer_syncdata_table)->fetch();
+
+        if (isset($items_to_process['count']) && $items_to_process['count'] > 0){
+
+            $this->debbug("Deleting ".$items_to_process['count']." items to process...");
+
+            try{
+
+                $sql_query_delete = " DELETE FROM ".$this->saleslayer_syncdata_table;
+                $this->sl_connection_query($sql_query_delete);
+              
+            }catch(\Exception $e){
+             
+                $this->debbug('## Error. Delete syncdata SQL message: '.$e->getMessage());
+                $this->debbug('## Error. Delete syncdata SQL query: '.$sql_query_delete);
+
+            }
+
+        }
+
+        $indexers_data = $this->connection->fetchAll(" SELECT * FROM ".$this->saleslayer_indexers_table);
+      
+        if (!empty($indexers_data)){
+          
+            $this->debbug("Deleting ".count($indexers_data)." indexers to process...");
+
+            foreach ($indexers_data as $indexer_data) { 
+
+                $this->debbug('Updating indexer '.$indexer_data['indexer_title'].' with id '.$indexer_data['indexer_id'].' status back...');
+
+                $time_ini_indexer = microtime(1);
+
+                try{
+                  
+                    $indexer = clone $this->indexer;
+                    $indexer->load($indexer_data['indexer_id']);
+                    $indexer->getState()->setStatus($indexer_data['indexer_status']);
+                    $indexer->getState()->save();
+                  
+                    $this->debbug('Indexer '.$indexer_data['indexer_title'].' with id '.$indexer_data['indexer_id'].' status updated back to: '.$indexer_data['indexer_status']);
+                    $this->debbug('## time_indexer '.$indexer_data['indexer_title'].' to original value: '.(microtime(1) - $time_ini_indexer).' seconds.');
+                    $this->debbug('## time_indexer '.$indexer_data['indexer_title'].' to original value: '.(microtime(1) - $time_ini_indexer).' seconds.', 'timer');
+
+                }catch(\Exception $e){
+
+                    $this->debbug('## Error. Updating indexer '.$indexer_data['indexer_title'].' with id '.$indexer_data['indexer_id'].' status back. Message: '.$e->getMessage());
+                  
+                }
+
+                try{
+
+                   $sql_query_delete = " DELETE FROM ".$this->saleslayer_indexers_table.
+                               " WHERE id = ".$indexer_data['id'];
+
+                   $this->sl_connection_query($sql_query_delete);
+                   
+                }catch(\Exception $e){
+                  
+                    $this->debbug('## Error. Delete indexers SQL message: '.$e->getMessage());
+                    $this->debbug('## Error. Delete indexers SQL query: '.$sql_query_delete);
+
+                }
+           
+            }
+              
+        }
+
+    }
 
     /**
      * Function to filter empty and null values
