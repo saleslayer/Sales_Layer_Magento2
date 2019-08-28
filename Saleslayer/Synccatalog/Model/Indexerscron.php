@@ -34,6 +34,7 @@ use \Magento\Indexer\Model\Indexer\Collection as indexerCollection;
 use \Magento\Framework\App\ResourceConnection as resourceConnection;
 use \Magento\Eav\Model\ResourceModel\Entity\Attribute\Option\Collection as collectionOption;
 use \Magento\Cron\Model\Schedule as cronSchedule;
+use \Magento\Framework\App\Config\ScopeConfigInterface as scopeConfigInterface;
 
 /**
  * Class Saleslayer_Synccatalog_Model_Indexerscron
@@ -73,6 +74,7 @@ class Indexerscron extends Synccatalog{
                 resourceConnection $resourceConnection,
                 collectionOption $collectionOption,
                 cronSchedule $cronSchedule,
+                scopeConfigInterface $scopeConfigInterface,
                 resource $resource = null,
                 resourceCollection $resourceCollection = null,
                 array $data = []) {
@@ -100,6 +102,7 @@ class Indexerscron extends Synccatalog{
                             $resourceConnection,
                             $collectionOption,
                             $cronSchedule,
+                            $scopeConfigInterface,
                             $resource,
                             $resourceCollection,
                             $data);
@@ -230,7 +233,7 @@ class Indexerscron extends Synccatalog{
                                     $indexer_sql = " UPDATE ".$this->saleslayer_indexers_table.
                                                             " SET sync_tries = ".$sync_tries.
                                                             " WHERE id = ".$indexer_data['id'];
-
+                                                            
                                 }
                                 
                                 $this->sl_connection_query($indexer_sql);

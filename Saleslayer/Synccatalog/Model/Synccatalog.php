@@ -31,6 +31,7 @@ use \Magento\Indexer\Model\Indexer\Collection as indexerCollection;
 use \Magento\Framework\App\ResourceConnection as resourceConnection;
 use \Magento\Eav\Model\ResourceModel\Entity\Attribute\Option\Collection as collectionOption;
 use \Magento\Cron\Model\Schedule as cronSchedule;
+use \Magento\Framework\App\Config\ScopeConfigInterface as scopeConfigInterface;
 
 class Synccatalog extends \Magento\Framework\Model\AbstractModel
 {
@@ -55,6 +56,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
     protected $resourceConnection;
     protected $collectionOption;
     protected $cronSchedule;
+    protected $scopeConfigInterface;
     protected $salesLayerConn;
     protected $connection;
     protected $directoryListFilesystem;
@@ -214,6 +216,9 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
      * @param indexer                             $indexer                             \Magento\Indexer\Model\Indexer
      * @param indexerCollection                   $indexerCollection                   \Magento\Indexer\Model\Indexer\Collection
      * @param resourceConnection                  $resourceConnection                  \Magento\Framework\App\ResourceConnection
+     * @param collectionOption                    $collectionOption                    \Magento\Eav\Model\ResourceModel\Entity\Attribute\Option\Collection
+     * @param cronSchedule                        $cronSchedule                        \Magento\Cron\Model\Schedule
+     * @param scopeConfigInterface                $scopeConfigInterface                \Magento\Framework\App\Config\ScopeConfigInterface
      * @param resource|null                       $resource                            \Magento\Framework\Model\ResourceModel\AbstractResource
      * @param resourceCollection|null             $resourceCollection                  \Magento\Framework\Data\Collection\AbstractDb
      * @param array                               $data                                
@@ -243,6 +248,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         resourceConnection $resourceConnection,
         collectionOption $collectionOption,
         cronSchedule $cronSchedule,
+        scopeConfigInterface $scopeConfigInterface,
         resource $resource = null,
         resourceCollection $resourceCollection = null,
         array $data = []
@@ -270,6 +276,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $this->resourceConnection                       = $resourceConnection;
         $this->collectionOption                         = $collectionOption;
         $this->cronSchedule                             = $cronSchedule;
+        $this->scopeConfigInterface                     = $scopeConfigInterface;
         $this->connection                               = $this->resourceConnection->getConnection();
         $this->saleslayer_multiconn_table               = $this->resourceConnection->getTableName($this->saleslayer_multiconn_table);
         $this->saleslayer_syncdata_table                = $this->resourceConnection->getTableName($this->saleslayer_syncdata_table);
@@ -304,6 +311,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $this->avoid_images_updates = $this->synccatalogConfigHelper->getAvoidImagesUpdates();
         $this->sync_data_hour_from = $this->synccatalogConfigHelper->getSyncDataHourFrom();
         $this->sync_data_hour_until = $this->synccatalogConfigHelper->getSyncDataHourUntil();
+        $this->config_manage_stock = $this->scopeConfigInterface->getValue('cataloginventory/item_options/manage_stock');
 
     }
 
@@ -1086,7 +1094,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                     case 'products':
 
                         $item_type = 'product';
-                        
+
                         $this->debbug('Total count of sync products to store: '.count($modified_data));
                         $this->debbug('Sync products data to store: '.print_r($modified_data,1));
                         $arrayReturn['products_to_sync'] = count($modified_data);
@@ -1132,7 +1140,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                     case 'product_formats':
                         
                         $item_type = 'product_format';
-                        
+
                         if (!empty($this->products_not_synced) && count($modified_data) > 0){
 
                             foreach ($modified_data as $keyForm => $format) {
@@ -2956,20 +2964,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
             $new_product->setSku($sl_sku);
         }
 
-        $isInStock = $sl_qty = 0;
-
-        if ($this->has_product_field_qty) {
-
-            $sl_qty = $sl_data[$this->product_field_qty];
-
-            if ($sl_qty) {
-
-                $isInStock = 1;
-                
-            }
-
-        }
-
         //If the product has an attribute_set_id we find the existing by name or id, otherwise we use the default one.
         $sl_attribute_set_id = '';
         if (isset($sl_data[$this->product_field_attribute_set_id])){
@@ -3008,6 +3002,29 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $url_key = $sl_name;
         if ($sl_sku != ''){ $url_key.= '-'.$sl_sku; }
 
+        $isInStock = $sl_qty = 0;
+        $manage_stock = $this->config_manage_stock;
+        $use_config_manage_stock = 1;
+
+        if ($this->has_product_field_qty) {
+
+            $sl_qty = $sl_data[$this->product_field_qty];
+
+            if ($sl_qty) {
+
+                $manage_stock = 1;
+                $isInStock = 1;
+                
+            }
+
+            if ($manage_stock !== $this->config_manage_stock){
+
+                $use_config_manage_stock = 0;
+
+            }
+
+        }
+
         $new_product->setAttributeSetId($sl_attribute_set_id)
                     ->setName($sl_name)
                     ->setUrlKey($url_key)
@@ -3015,10 +3032,10 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                     ->setDescription($sl_description)
                     ->setShortDescription($sl_description_short)
                     ->setStockData(array(
-                                        'manage_stock'            => 1,
+                                        'manage_stock'            => $manage_stock,
                                         'is_in_stock'             => $isInStock,
                                         'qty'                     => $sl_qty,
-                                        'use_config_manage_stock' => 0))
+                                        'use_config_manage_stock' => $use_config_manage_stock))
                     ->setCreatedAt(strtotime('now'))
                     ->setStatus($this->status_enabled)
                     ->setTypeId($this->product_type_simple)
@@ -3186,6 +3203,8 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         }
 
         $isInStock = $sl_qty = 0;
+        $manage_stock = $this->config_manage_stock;
+        $use_config_manage_stock = 1;
 
         if ($this->avoid_stock_update == '0'){
 
@@ -3195,17 +3214,24 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                 if ($sl_qty) {
 
+                    $manage_stock = 1;
                     $isInStock = 1;
+
+                }
+
+                if ($manage_stock !== $this->config_manage_stock){
+
+                    $use_config_manage_stock = 0;
 
                 }
 
                 if ($update_product->getExtensionAttributes()->getStockItem()->getQty() != $sl_qty){
 
                     $update_product->setStockData(array(
-                                                    'manage_stock'            => 1,
+                                                    'manage_stock'            => $manage_stock,
                                                     'is_in_stock'             => $isInStock,
                                                     'qty'                     => $sl_qty,
-                                                    'use_config_manage_stock' => 0));
+                                                    'use_config_manage_stock' => $use_config_manage_stock));
                     
                     $product_modified = true;
 
@@ -5017,16 +5043,33 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                             }
 
                             $isInStock = $sl_qty = 0;
+                            $manage_stock = $this->config_manage_stock;
+                            $use_config_manage_stock = 1;
+
                             if (isset($sl_data['format_quantity']) && is_numeric($sl_data['format_quantity'])){
+                                
                                 $sl_qty = $sl_data['format_quantity'];
-                                $isInStock = 1;
+
+                                if ($sl_qty) {
+
+                                    $manage_stock = 1;
+                                    $isInStock = 1;
+
+                                }
+
+                            }
+
+                            if ($manage_stock !== $this->config_manage_stock){
+
+                                $use_config_manage_stock = 0;
+
                             }
 
                             $form_product->setStockData(array(
-                                'manage_stock'            => 1,
+                                'manage_stock'            => $manage_stock,
                                 'is_in_stock'             => $isInStock,
                                 'qty'                     => $sl_qty,
-                                'use_config_manage_stock' => 0));
+                                'use_config_manage_stock' => $use_config_manage_stock));
 
                             $form_product->setSaleslayerId($sl_product_id);
                             $form_product->setSaleslayerCompId($this->comp_id);
@@ -5106,16 +5149,33 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                     if ($this->avoid_stock_update == '0'){
 
                         $isInStock = $sl_qty = 0;
+                        $manage_stock = $this->config_manage_stock;
+                        $use_config_manage_stock = 1;
+
                         if (isset($sl_data['format_quantity']) && is_numeric($sl_data['format_quantity'])){
+                            
                             $sl_qty = $sl_data['format_quantity'];
-                            $isInStock = 1;
+
+                            if ($sl_qty) {
+
+                                $manage_stock = 1;
+                                $isInStock = 1;
+
+                            }
+
+                        }
+
+                        if ($manage_stock !== $this->config_manage_stock){
+
+                            $use_config_manage_stock = 0;
+
                         }
 
                         $form_product->setStockData(array(
-                            'manage_stock'            => 1,
+                            'manage_stock'            => $manage_stock,
                             'is_in_stock'             => $isInStock,
                             'qty'                     => $sl_qty,
-                            'use_config_manage_stock' => 0));
+                            'use_config_manage_stock' => $use_config_manage_stock));
 
                     }
 

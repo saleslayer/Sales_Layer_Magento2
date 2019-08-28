@@ -34,6 +34,7 @@ use \Magento\Indexer\Model\Indexer\Collection as indexerCollection;
 use \Magento\Framework\App\ResourceConnection as resourceConnection;
 use \Magento\Eav\Model\ResourceModel\Entity\Attribute\Option\Collection as collectionOption;
 use \Magento\Cron\Model\Schedule as cronSchedule;
+use \Magento\Framework\App\Config\ScopeConfigInterface as scopeConfigInterface;
 
 /**
  * Class Saleslayer_Synccatalog_Model_Syncdatacron
@@ -82,6 +83,7 @@ class Syncdatacron extends Synccatalog{
                 resourceConnection $resourceConnection,
                 collectionOption $collectionOption,
                 cronSchedule $cronSchedule,
+                scopeConfigInterface $scopeConfigInterface,
                 resource $resource = null,
                 resourceCollection $resourceCollection = null,
                 array $data = []) {
@@ -109,6 +111,7 @@ class Syncdatacron extends Synccatalog{
                             $resourceConnection,
                             $collectionOption,
                             $cronSchedule,
+                            $scopeConfigInterface,
                             $resource,
                             $resourceCollection,
                             $data);
