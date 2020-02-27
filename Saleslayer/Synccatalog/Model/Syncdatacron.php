@@ -35,6 +35,7 @@ use \Magento\Framework\App\ResourceConnection as resourceConnection;
 use \Magento\Eav\Model\ResourceModel\Entity\Attribute\Option\Collection as collectionOption;
 use \Magento\Cron\Model\Schedule as cronSchedule;
 use \Magento\Framework\App\Config\ScopeConfigInterface as scopeConfigInterface;
+use \Magento\Tax\Model\ClassModel as tax_class_model;
 
 /**
  * Class Saleslayer_Synccatalog_Model_Syncdatacron
@@ -84,6 +85,7 @@ class Syncdatacron extends Synccatalog{
                 collectionOption $collectionOption,
                 cronSchedule $cronSchedule,
                 scopeConfigInterface $scopeConfigInterface,
+                tax_class_model $tax_class_model,
                 resource $resource = null,
                 resourceCollection $resourceCollection = null,
                 array $data = []) {
@@ -112,6 +114,7 @@ class Syncdatacron extends Synccatalog{
                             $collectionOption,
                             $cronSchedule,
                             $scopeConfigInterface,
+                            $tax_class_model,
                             $resource,
                             $resourceCollection,
                             $data);
@@ -145,8 +148,8 @@ class Syncdatacron extends Synccatalog{
             $this->execute_slyr_load_functions();
             
             $this->category_fields = array('category_field_name', 'category_field_description', 'category_field_image', 'category_field_meta_title', 'category_field_meta_keywords', 'category_field_meta_description', 'category_images_sizes');
-            $this->product_fields = array('product_field_name', 'product_field_description', 'product_field_description_short', 'product_field_price', 'product_field_image', 'product_field_meta_title', 'product_field_meta_keywords', 'product_field_meta_description', 'product_images_sizes', 'has_product_field_sku', 'product_field_sku', 'has_product_field_qty', 'product_field_qty', 
-                'image_extensions');
+            $this->product_fields = array('product_field_name', 'product_field_description', 'product_field_description_short', 'product_field_price', 'product_field_image', 'product_field_meta_title', 'product_field_meta_keywords', 'product_field_meta_description', 'product_images_sizes', 'has_product_field_sku', 'product_field_sku', 'has_product_field_qty', 'product_field_qty', 'image_extensions', 'product_field_tax_class_id', 'product_field_length', 'product_field_width', 'product_field_height', 'product_field_weight', 'product_field_status');
+
             $this->product_format_fields = array('format_images_sizes', 'image_extensions');
 
             $this->initialized_vars = true;
@@ -239,7 +242,7 @@ class Syncdatacron extends Synccatalog{
                                 $this->debbug('## Error. Exception killing pid '.$current_flag['syncdata_pid'].': '.print_r($e->getMessage(),1), 'syncdata');
                         
                             }
-                                                        
+                            
                         }
 
                         $sl_query_flag_to_update = " UPDATE ".$this->saleslayer_syncdata_flag_table.
@@ -267,7 +270,7 @@ class Syncdatacron extends Synccatalog{
                     $this->debbug('## Error. Cleaning sync_data_flag table before inserting: '.print_r($e->getMessage(),1), 'syncdata');
                 
                 }
-                
+
                 $sl_query_flag_to_insert = " INSERT INTO ".$this->saleslayer_syncdata_flag_table.
                                          " ( syncdata_pid, syncdata_last_date) VALUES ".
                                          "('".$this->syncdata_pid."', '".$date_now."')";
@@ -520,7 +523,7 @@ class Syncdatacron extends Synccatalog{
         }
 
         $this->debbug('### time_all_syncdata_process: '.(microtime(1) - $this->sl_time_ini_sync_data_process).' seconds.', 'syncdata');
-
+ 
         $this->debbug("==== Sync Data END ====", 'syncdata');
 
     }

@@ -32,6 +32,7 @@ use \Magento\Framework\App\ResourceConnection as resourceConnection;
 use \Magento\Eav\Model\ResourceModel\Entity\Attribute\Option\Collection as collectionOption;
 use \Magento\Cron\Model\Schedule as cronSchedule;
 use \Magento\Framework\App\Config\ScopeConfigInterface as scopeConfigInterface;
+use \Magento\Tax\Model\ClassModel as tax_class_model;
 
 class Synccatalog extends \Magento\Framework\Model\AbstractModel
 {
@@ -57,6 +58,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
     protected $collectionOption;
     protected $cronSchedule;
     protected $scopeConfigInterface;
+    protected $tax_class_model;
     protected $salesLayerConn;
     protected $connection;
     protected $directoryListFilesystem;
@@ -125,12 +127,16 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
     protected $product_field_meta_title             = 'product_meta_title';
     protected $product_field_meta_keywords          = 'product_meta_keywords';
     protected $product_field_meta_description       = 'product_meta_description';
+    protected $product_field_length                 = 'product_length';
+    protected $product_field_width                  = 'product_width';
+    protected $product_field_height                 = 'product_height';
     protected $product_field_weight                 = 'product_weight';
     protected $product_field_status                 = 'product_status';
     protected $product_field_related_references     = 'related_products_references';
     protected $product_field_crosssell_references   = 'crosssell_products_references';
     protected $product_field_upsell_references      = 'upsell_products_references';
     protected $product_field_attribute_set_id       = 'attribute_set_id';
+    protected $product_field_tax_class_id           = 'product_tax_class_id';
     protected $product_path_base                    = BP.'/pub/media/catalog/product/';
     protected $product_tmp_path_base                = BP.'/pub/media/tmp/catalog/product/';
     protected $product_images_sizes                 = array();
@@ -193,6 +199,15 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
  
     protected $catalog_category_product_table       = 'catalog_category_product';
 
+    protected $sl_logs_path                         = BP.'/var/log/sl_logs/';
+    protected $sl_logs_folder_checked               = false;
+
+    protected $tax_class_collection_loaded          = false;
+    protected $tax_class_collection                 = array();
+
+    protected $config_manage_stock                  = '';
+    protected $config_default_product_tax_class     = '';
+
     /**
      * Function __construct
      * @param context                             $context                             \Magento\Framework\Model\Context
@@ -219,6 +234,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
      * @param collectionOption                    $collectionOption                    \Magento\Eav\Model\ResourceModel\Entity\Attribute\Option\Collection
      * @param cronSchedule                        $cronSchedule                        \Magento\Cron\Model\Schedule
      * @param scopeConfigInterface                $scopeConfigInterface                \Magento\Framework\App\Config\ScopeConfigInterface
+     * @param tax_class_model                     $tax_class_model                     \Magento\Tax\Model\ClassModel
      * @param resource|null                       $resource                            \Magento\Framework\Model\ResourceModel\AbstractResource
      * @param resourceCollection|null             $resourceCollection                  \Magento\Framework\Data\Collection\AbstractDb
      * @param array                               $data                                
@@ -249,6 +265,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         collectionOption $collectionOption,
         cronSchedule $cronSchedule,
         scopeConfigInterface $scopeConfigInterface,
+        tax_class_model $tax_class_model,
         resource $resource = null,
         resourceCollection $resourceCollection = null,
         array $data = []
@@ -277,6 +294,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $this->collectionOption                         = $collectionOption;
         $this->cronSchedule                             = $cronSchedule;
         $this->scopeConfigInterface                     = $scopeConfigInterface;
+        $this->tax_class_model                          = $tax_class_model;
         $this->connection                               = $this->resourceConnection->getConnection();
         $this->saleslayer_multiconn_table               = $this->resourceConnection->getTableName($this->saleslayer_multiconn_table);
         $this->saleslayer_syncdata_table                = $this->resourceConnection->getTableName($this->saleslayer_syncdata_table);
@@ -312,6 +330,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $this->sync_data_hour_from = $this->synccatalogConfigHelper->getSyncDataHourFrom();
         $this->sync_data_hour_until = $this->synccatalogConfigHelper->getSyncDataHourUntil();
         $this->config_manage_stock = $this->scopeConfigInterface->getValue('cataloginventory/item_options/manage_stock');
+        $this->config_default_product_tax_class = $this->scopeConfigInterface->getValue('tax/classes/default_product_tax_class');
 
     }
 
@@ -322,34 +341,48 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
      * @return void
      */
     public function debbug($msg, $type = ''){
+
+        if (!$this->sl_logs_folder_checked){
+
+            $this->sl_logs_path = $this->directoryListFilesystem->getPath('log').'/sl_logs/';
+
+            if (!file_exists($this->sl_logs_path)) {
+                
+                mkdir($this->sl_logs_path, 0777, true);
+            
+            }
+
+            $this->sl_logs_folder_checked = true;
+
+        }
         
         if ($this->sl_DEBBUG > 0){
 
             $error_write = false;
             if (strpos($msg, '## Error.') !== false){
                 $error_write = true;
-                $error_file = BP.'/var/log/_error_debbug_log_saleslayer_'.date('Y-m-d').'.dat';
+                $error_file = $this->sl_logs_path.'_error_debbug_log_saleslayer_'.date('Y-m-d').'.dat';
             }
 
             switch ($type) {
                 case 'timer':
-                    $file = BP.'/var/log/_debbug_log_saleslayer_timers_'.date('Y-m-d').'.dat';
+                    $file = $this->sl_logs_path.'_debbug_log_saleslayer_timers_'.date('Y-m-d').'.dat';
                     break;
 
                 case 'autosync':
-                    $file = BP.'/var/log/_debbug_log_saleslayer_auto_sync_'.date('Y-m-d').'.dat';
+                    $file = $this->sl_logs_path.'_debbug_log_saleslayer_auto_sync_'.date('Y-m-d').'.dat';
                     break;
 
                 case 'syncdata':
-                    $file = BP.'/var/log/_debbug_log_saleslayer_sync_data_'.date('Y-m-d').'.dat';
+                    $file = $this->sl_logs_path.'_debbug_log_saleslayer_sync_data_'.date('Y-m-d').'.dat';
                     break;
 
                 case 'indexers':
-                    $file = BP.'/var/log/_debbug_log_saleslayer_indexers_'.date('Y-m-d').'.dat';
+                    $file = $this->sl_logs_path.'_debbug_log_saleslayer_indexers_'.date('Y-m-d').'.dat';
                     break;
 
                 default:
-                    $file = BP.'/var/log/_debbug_log_saleslayer_'.date('Y-m-d').'.dat';
+                    $file = $this->sl_logs_path.'_debbug_log_saleslayer_'.date('Y-m-d').'.dat';
                     break;
             }
 
@@ -801,7 +834,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                                 if ($struc['type']=='image') {
 
-                                    $schema[$table]['fields']['image_sizes']=$struc['image_sizes'];
+                                    $schema[$table]['fields'][$struc['basename']]['image_sizes']=$struc['image_sizes'];
                                 }
                             }
 
@@ -1139,7 +1172,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                         break;
                     case 'product_formats':
                         
-                        $item_type = 'product_format';
+                        $item_type = 'product_format'; 
 
                         if (!empty($this->products_not_synced) && count($modified_data) > 0){
 
@@ -1155,7 +1188,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                             }
 
                         }
-
 
                         $this->debbug('Total count of sync product formats to store: '.count($modified_data));
                         $this->debbug('Product formats data: '.print_r($modified_data,1));
@@ -1581,6 +1613,28 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         $product_data_to_store['product_fields']['product_field_meta_description'] = $this->product_field_meta_description;
 
+        if (isset($schema['fields'][$this->product_field_tax_class_id]) && $schema['fields'][$this->product_field_tax_class_id]['has_multilingual']) {
+
+            $this->product_field_tax_class_id .= '_'.$this->sl_language;
+
+        }
+
+        $product_data_to_store['product_fields']['product_field_tax_class_id'] = $this->product_field_tax_class_id;
+
+        $size_fields = array('product_field_length', 'product_field_width', 'product_field_height', 'product_field_weight');
+        
+        foreach ($size_fields as $size_field) {
+            
+            if (isset($product_data_to_store['product_fields'][$size_field]) && $product_data_to_store['product_fields'][$size_field]['has_multilingual']) {
+
+                $this->$size_field .= '_'.$this->sl_language;
+
+            }
+
+            $product_data_to_store['product_fields'][$size_field] = $this->$size_field;
+
+        }
+
         $this->product_images_sizes = array();
 
         if (!empty($schema['fields']['product_image']['image_sizes'])) {
@@ -1664,9 +1718,10 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $product_data_to_store['product_fields']['has_product_field_qty'] = $this->has_product_field_qty;
         $product_data_to_store['product_fields']['product_field_qty'] = $this->product_field_qty;
 
-        $fixed_product_fields = array('product_name', 'product_description', 'product_description_short', 'product_price', 'product_image', 'image_sizes', 'sku', 'qty',
-                                        'attribute_set_id', 'product_meta_title', 'product_meta_keywords', 'product_meta_description', 'product_weight', 
-                                        'related_products_references', 'crosssell_products_references', 'upsell_products_references');
+        $fixed_product_fields = array('ID', 'ID_catalogue', 'product_name', 'product_description', 'product_description_short', 'product_price', 'product_image', 'image_sizes', 'sku', 'qty',
+                                        'attribute_set_id', 'product_meta_title', 'product_meta_keywords', 'product_meta_description', 'product_length', 'product_width', 
+                                        'product_height', 'product_weight', 'related_products_references', 'crosssell_products_references', 'upsell_products_references', 'product_tax_class_id',
+                                        'product_status', 'product_inventory_backorders');
 
         if (!empty($schema['fields'])){
         
@@ -2022,7 +2077,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         $this->debbug(" > Creating category ID: $sl_id (parent: $sl_parent_id: $parentCategory_path)");
         if ($this->sl_DEBBUG > 1) $this->debbug(" Name ({$this->category_field_name}): $sl_name");
-        
+
         $new_category->setName        ($sl_name);
         $new_category->setUrlKey      ($sl_name);
         
@@ -2098,7 +2153,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                                                                                 'saleslayer_comp_id' => $this->comp_id);
                 
                 $this->categories_collection_names[$sl_name][] = $new_category->getEntityId();
-
+                
                 return true;
             }else{
                 $this->debbug('## Error. Creating new category '.$sl_name.'.');
@@ -2148,7 +2203,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $sl_name        = $sl_data[$this->category_field_name];
         
         $this->debbug(" > Updating category core data ID: $sl_id (parent: $sl_parent_id: $parentCategory_path)");
-    
+
         if ($update_category->getName() != $sl_name){
 
             $update_category->setName($sl_name);
@@ -3025,6 +3080,18 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         }
 
+        $sl_tax_class_id_value = '';
+
+        if (isset($sl_data[$this->product_field_tax_class_id])){
+
+            $sl_tax_class_id_value = $sl_data[$this->product_field_tax_class_id];
+
+        }
+
+        $sl_tax_class_id_found = $this->findTaxClassId($sl_tax_class_id_value);
+
+        $new_product->setTaxClassId($sl_tax_class_id_found);
+
         $new_product->setAttributeSetId($sl_attribute_set_id)
                     ->setName($sl_name)
                     ->setUrlKey($url_key)
@@ -3039,8 +3106,8 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                     ->setCreatedAt(strtotime('now'))
                     ->setStatus($this->status_enabled)
                     ->setTypeId($this->product_type_simple)
-                    ->setVisibility($this->visibility_both)
-                    ->setTaxClassId(0); //tax class (0 - none, 1 - default, 2 - taxable, 4 - shipping);
+                    ->setVisibility($this->visibility_both);
+                    // ->setTaxClassId(0); //tax class (0 - none, 1 - default, 2 - taxable, 4 - shipping);
 
         $new_product->setSaleslayerId($sl_id);
         $new_product->setSaleslayerCompId($this->comp_id);
@@ -3070,7 +3137,25 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
             $new_product->setMetaDescription($sl_data[$this->product_field_meta_description]);
         }
 
-        if (isset($sl_data[$this->product_field_weight]) && $sl_data[$this->product_field_weight] != 0){
+        if (isset($sl_data[$this->product_field_length]) && is_numeric($sl_data[$this->product_field_length])){
+            $new_product->setLength($sl_data[$this->product_field_length]);
+        }else{
+            $new_product->setLength(1);
+        }  
+
+        if (isset($sl_data[$this->product_field_width]) && is_numeric($sl_data[$this->product_field_width])){
+            $new_product->setWidth($sl_data[$this->product_field_width]);
+        }else{
+            $new_product->setWidth(1);
+        }  
+
+        if (isset($sl_data[$this->product_field_height]) && is_numeric($sl_data[$this->product_field_height])){
+            $new_product->setHeight($sl_data[$this->product_field_height]);
+        }else{
+            $new_product->setHeight(1);
+        }  
+
+        if (isset($sl_data[$this->product_field_weight]) && is_numeric($sl_data[$this->product_field_weight])){
             $new_product->setWeight($sl_data[$this->product_field_weight]);
         }else{
             $new_product->setWeight(1);
@@ -3301,7 +3386,42 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         } 
 
-        if (isset($sl_data[$this->product_field_weight]) && $sl_data[$this->product_field_weight] != 0){
+        if (isset($sl_data[$this->product_field_length]) && is_numeric($sl_data[$this->product_field_length])){
+
+            if ($update_product->getLength() != $sl_data[$this->product_field_length]){
+
+                $update_product->setLength($sl_data[$this->product_field_length]);
+                $product_modified = true;
+                
+            }
+
+        }
+
+        if (isset($sl_data[$this->product_field_width]) && is_numeric($sl_data[$this->product_field_width])){
+
+            if ($update_product->getWidth() != $sl_data[$this->product_field_width]){
+
+                $update_product->setWidth($sl_data[$this->product_field_width]);
+                $product_modified = true;
+                
+            }
+
+        }
+
+
+        if (isset($sl_data[$this->product_field_height]) && is_numeric($sl_data[$this->product_field_height])){
+
+            if ($update_product->getHeight() != $sl_data[$this->product_field_height]){
+
+                $update_product->setHeight($sl_data[$this->product_field_height]);
+                $product_modified = true;
+                
+            }
+
+        }
+
+
+        if (isset($sl_data[$this->product_field_weight]) && is_numeric($sl_data[$this->product_field_weight])){
 
             if ($update_product->getWeight() != $sl_data[$this->product_field_weight]){
 
@@ -3480,23 +3600,25 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         if ($update_product->getCategoryIds() != $categoryIds){
 
-            $error_assign = false;
+            // $error_assign = false;
             
-            try {
+            // try {
                 
-                $this->categoryLinkManagementInterface->assignProductToCategories($update_product->getSku(), $categoryIds);
+            //     $this->categoryLinkManagementInterface->assignProductToCategories($update_product->getSku(), $categoryIds);
             
-            }catch (\Exception $e) {
+            // }catch (\Exception $e) {
 
-                $this->debbug("## Error. Updating product categories automatically: ".$e->getMessage());
-                $error_assign = true;
+            //     $this->debbug("## Error. Updating product categories automatically: ".$e->getMessage());
+            //     $error_assign = true;
 
-            }
+            // }
 
-            if ($error_assign){
+            // if ($error_assign){
 
                 $excess_categories = array_diff($update_product->getCategoryIds(), $categoryIds);
                 $missing_categories = array_diff($categoryIds, $update_product->getCategoryIds());
+
+                $error_cat = false;
 
                 if (!empty($excess_categories)){
                     
@@ -3508,6 +3630,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                     
                     }catch(\Exception $e){
                     
+                        $error_cat = true;
                         $this->debbug('## Error. Removing product categories manually: '.$e->getMessage());
 
                     }
@@ -3525,7 +3648,8 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                             $this->sl_connection_query($query_insert, array($missing_category, $update_product->getEntityId(), 1));
                             
                         }catch(\Exception $e){
-
+                            
+                            $error_cat = true;
                             $this->debbug('## Error. Adding product categories manually: '.$e->getMessage());
                             
                         }
@@ -3534,7 +3658,13 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                     
                 }
 
-            }
+                if ($error_cat){
+
+                    return false;
+                    
+                }
+
+            // }
 
         }
 
@@ -3619,6 +3749,19 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
             if ($update_product->getMetaDescription() != $sl_data[$this->product_field_meta_description]){
 
                 $update_product->setMetaDescription($sl_data[$this->product_field_meta_description]);
+                $product_modified = true;
+
+            }
+
+        }
+
+        if (isset($sl_data[$this->product_field_tax_class_id]) && $sl_data[$this->product_field_tax_class_id] != ''){
+
+            $sl_tax_class_id_found = $this->findTaxClassId($sl_data[$this->product_field_tax_class_id]);
+            
+            if ($update_product->getTaxClassId() != $sl_tax_class_id_found){
+
+                $update_product->setTaxClassId($sl_tax_class_id_found);
                 $product_modified = true;
 
             }
@@ -3884,6 +4027,78 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
             return true;
 
         }
+    }
+
+    /**
+     * Function to load tax classes collection into a class variable.
+     * @return void
+     */
+    private function loadTaxClassesCollection(){
+
+        if (!$this->tax_class_collection_loaded){
+
+            $tax_class_collection = $this->tax_class_model->getCollection();
+            
+            foreach ($tax_class_collection as $tax_class_model) {
+
+                $this->tax_class_collection[$tax_class_model->getClassId()] = array('class_id' => $tax_class_model->getClassId(),
+                                                                                'class_name' => $tax_class_model->getClassName());
+
+            }
+
+            $this->tax_class_collection_loaded = true;
+            
+        }
+
+    }
+
+    /**
+     * Function to find tax class id by Sales Layer value.
+     * @param  int|string $sl_tax_class_id_value            Sales Layer tax class id or name value
+     * @return int $sl_tax_class_id_found                   If found, tax class id, if not, default tax class id
+     */
+    private function findTaxClassId($sl_tax_class_id_value = ''){
+
+        $sl_tax_class_id_found = '';
+        
+        if (!is_null($sl_tax_class_id_value) && $sl_tax_class_id_value != ''){
+
+            $this->loadTaxClassesCollection();
+
+            foreach ($this->tax_class_collection as $tax_id => $tax) {
+            
+                if (is_numeric($sl_tax_class_id_value)){
+            
+                    if ($tax_id == $sl_tax_class_id_value){
+            
+                        $sl_tax_class_id_found = $tax_id;
+                        break;
+            
+                    }
+            
+                }else{
+            
+                    if (strtolower($tax['class_name']) == strtolower($sl_tax_class_id_value)){
+            
+                        $sl_tax_class_id_found = $tax_id;
+                        break;
+            
+                    }
+            
+                }
+            
+            }
+        
+        }
+
+        if (is_null($sl_tax_class_id_found) || $sl_tax_class_id_found == ''){
+
+            $sl_tax_class_id_found = $this->config_default_product_tax_class;
+
+        }
+
+        return $sl_tax_class_id_found;
+
     }
 
     /**
@@ -4937,7 +5152,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         if ($this->sl_DEBBUG > 2) $this->debbug('Synchronizing stored product format: '.print_R($format,1));
 
-        $arrayExclude = array('product_reference','format_reference', 'format_name', 'format_price', 'format_sku', 'format_quantity', $this->format_field_image);
+        $arrayExclude = array('product_reference','format_reference', 'format_name', 'format_price', 'format_sku', 'format_quantity', $this->format_field_image, 'format_tax_class_id');
 
         $parent_all_data = array();
 
@@ -5077,12 +5292,24 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                             $conf_categoryIds = $conf_product->getCategoryIds();
                             $form_product->setCategoryIds($conf_categoryIds);
-                                       
+
+                            $sl_tax_class_id_value = '';
+
+                            if (isset($sl_data['format_tax_class_id'])){
+
+                                $sl_tax_class_id_value = $sl_data['format_tax_class_id'];
+
+                            }
+
+                            $sl_tax_class_id_found = $this->findTaxClassId($sl_tax_class_id_value);
+
+                            $form_product->setTaxClassId($sl_tax_class_id_found);
+
                             $form_product->setWeight(1)
                                         ->setCreatedAt(strtotime('now'))
                                         ->setStatus($this->status_enabled)
                                         ->setVisibility($this->visibility_not_visible)
-                                        ->setTaxClassId(0) //tax class (0 - none, 1 - default, 2 - taxable, 4 - shipping)
+                                        // ->setTaxClassId(0) //tax class (0 - none, 1 - default, 2 - taxable, 4 - shipping)
                                         ->setAttributeSetId($conf_product_attribute_set_id)
                                         ->setTypeId($this->product_type_simple);
                             if (!empty($this->website_ids)){
@@ -5144,7 +5371,19 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                         $website_ids = array_unique(array_merge($form_product->getWebsiteIds(), $website_ids));
                         $form_product->setWebsiteIds($website_ids);
                         
-                    } 
+                    }
+
+                    if (isset($sl_data['format_tax_class_id']) && $sl_data['format_tax_class_id'] != ''){
+
+                        $sl_tax_class_id_found = $this->findTaxClassId($sl_data['format_tax_class_id']);
+
+                        if ($form_product->getTaxClassId() != $sl_tax_class_id_found){
+
+                            $form_product->setTaxClassId($sl_tax_class_id_found);
+
+                        }
+
+                    }
 
                     if ($this->avoid_stock_update == '0'){
 
@@ -5162,7 +5401,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                                 $isInStock = 1;
 
                             }
-
+                            
                         }
 
                         if ($manage_stock !== $this->config_manage_stock){
@@ -6554,7 +6793,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
             foreach ($this->products_collection as $product_col) {
 
-                if ($product_col['type_id'] != $this->product_type_simple){
+                if ($product_col['type_id'] != $this->product_type_simple && $product_col['type_id'] != $this->product_type_virtual){
                 
                     //If the product type is not simple, we skip it.
                     continue;
@@ -7861,40 +8100,12 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
     }
 
     /**
-     * Function to check if Sales Layer logs exists.
-     * @return boolean              if logs exist.
-     */
-    public function checkSLLogs(){
-
-        $log_dir_path = $this->directoryListFilesystem->getPath('log');
-
-        $log_folder_files = scandir($log_dir_path);
-
-        if (!empty($log_folder_files)){
-
-            foreach ($log_folder_files as $log_folder_file) {
-
-                if (strpos($log_folder_file, '_debbug_log_saleslayer_') !== false){
-
-                    return true;
-
-                }
-
-            }
-
-        }
-
-        return false;
-
-    }
-
-    /**
      * Function to delete Sales Layer logs.
      * @return void
      */
     public function deleteSLLogs(){
 
-        $log_dir_path = $this->directoryListFilesystem->getPath('log');
+        $log_dir_path = $this->directoryListFilesystem->getPath('log').'/sl_logs/';
 
         $log_folder_files = scandir($log_dir_path);
 
@@ -7904,7 +8115,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                 if (strpos($log_folder_file, '_debbug_log_saleslayer_') !== false){
 
-                    $file_path = $log_dir_path.'/'.$log_folder_file;
+                    $file_path = $log_dir_path.$log_folder_file;
 
                     if (file_exists($file_path)){
 
@@ -7928,9 +8139,9 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         $this->loadConfigParameters();
 
-        $files = array('system.log','exception.log');
+        $files = array();
 
-        $log_dir_path = $this->directoryListFilesystem->getPath('log');
+        $log_dir_path = $this->directoryListFilesystem->getPath('log').'/sl_logs/';
 
         $log_folder_files = scandir($log_dir_path);
 
@@ -7951,7 +8162,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         }
 
         
-        $zipname = $log_dir_path.'/sl_logs_'.date('Y-m-d H-i-s').'.zip';
+        $zipname = $log_dir_path.'sl_logs_'.date('Y-m-d H-i-s').'.zip';
         $zip = new \ZipArchive();
 
         $zip->open($zipname, $zip::CREATE);
@@ -7960,7 +8171,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         foreach ($files as $file) {
 
-            $file_path = $log_dir_path . '/' . $file;
+            $file_path = $log_dir_path . $file;
 
             if (file_exists($file_path)) {
 
@@ -8710,7 +8921,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
      */
     public function deleteSLLogFile($files_to_delete){
 
-        $log_dir_path = $this->directoryListFilesystem->getPath('log');
+        $log_dir_path = $this->directoryListFilesystem->getPath('log').'/sl_logs/';
 
         if (!is_array($files_to_delete)){ $files_to_delete = array($files_to_delete); }
 
@@ -8718,7 +8929,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         foreach ($files_to_delete as $file_to_delete) {
             
-            $file_path = $log_dir_path.'/'.$file_to_delete;
+            $file_path = $log_dir_path.$file_to_delete;
 
             if (file_exists($file_path)){
             
@@ -8742,12 +8953,12 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $logfile = html_entity_decode($logfile);
         $response = array();
         $response[1] = array();
-        $log_dir_path = $this->directoryListFilesystem->getPath('log');
+        $log_dir_path = $this->directoryListFilesystem->getPath('log').'/sl_logs/';
 
         $exportlines = '';
 
-        if(file_exists( $log_dir_path.'/'.$logfile)){
-            $file = file($log_dir_path.'/'.$logfile);
+        if(file_exists( $log_dir_path.$logfile)){
+            $file = file($log_dir_path.$logfile);
             $listed = 0;
             $warnings = 0;
             $numerrors = 0;
@@ -8819,11 +9030,11 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
      */
    public function checkFilesLogs(){
        
-       $files = array('system.log','exception.log');
+       $files = array();
 
        $response = array();
        $response[1] = array();
-       $log_dir_path = $this->directoryListFilesystem->getPath('log');
+       $log_dir_path = $this->directoryListFilesystem->getPath('log').'/sl_logs/';
 
        $log_folder_files = scandir($log_dir_path);
 
@@ -8843,11 +9054,11 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                    $errors = 0;
                    $warnings = 0;
                    $lines = 0;
-                   $file_path = $log_dir_path . '/' . $file;
+                   $file_path = $log_dir_path . $file;
 
                    if (file_exists($file_path)) {
                        $table['file'][] = htmlspecialchars($file, ENT_QUOTES, 'UTF-8');
-                       $fileopened = file($log_dir_path.'/'.$file);
+                       $fileopened = file($log_dir_path.$file);
                        if(sizeof( $fileopened)>=1){
                            $errors = 0;
                            $warnings = 0;

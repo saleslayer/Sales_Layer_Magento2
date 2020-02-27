@@ -35,6 +35,7 @@ use \Magento\Framework\App\ResourceConnection as resourceConnection;
 use \Magento\Eav\Model\ResourceModel\Entity\Attribute\Option\Collection as collectionOption;
 use \Magento\Cron\Model\Schedule as cronSchedule;
 use \Magento\Framework\App\Config\ScopeConfigInterface as scopeConfigInterface;
+use \Magento\Tax\Model\ClassModel as tax_class_model;
 
 /**
  * Class Saleslayer_Synccatalog_Model_Autosynccron
@@ -76,6 +77,7 @@ class Autosynccron extends Synccatalog{
                 collectionOption $collectionOption,
                 cronSchedule $cronSchedule,
                 scopeConfigInterface $scopeConfigInterface,
+                tax_class_model $tax_class_model,
                 resource $resource = null,
                 resourceCollection $resourceCollection = null,
                 array $data = []) {
@@ -104,6 +106,7 @@ class Autosynccron extends Synccatalog{
                             $collectionOption,
                             $cronSchedule,
                             $scopeConfigInterface,
+                            $tax_class_model,
                             $resource,
                             $resourceCollection,
                             $data);

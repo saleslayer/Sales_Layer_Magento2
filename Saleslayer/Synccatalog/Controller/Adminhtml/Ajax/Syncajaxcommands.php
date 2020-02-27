@@ -82,10 +82,8 @@ class Syncajaxcommands extends \Magento\Framework\App\Action\Action
 
         $response->setContents($this->jsonHelper->jsonEncode( $array_return));
 
-
         return $response;
 
-
-
     }
+    
 }
