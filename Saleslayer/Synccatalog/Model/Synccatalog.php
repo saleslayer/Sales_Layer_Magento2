@@ -5098,7 +5098,13 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                 if (in_array($all_stores_view_id, $this->store_view_ids)){
 
-                    $option_value_found = array_search($attribute_option_id, $this->attributes_collection[$attribute_set_id][$attribute_id]['options'][$all_stores_view_id]);
+                    $option_value_found = false;
+
+                    if (isset($this->attributes_collection[$attribute_set_id][$attribute_id]['options'][$all_stores_view_id])){
+
+                        $option_value_found = array_search($attribute_option_id, $this->attributes_collection[$attribute_set_id][$attribute_id]['options'][$all_stores_view_id]);
+
+                    }
 
                     if (!$option_value_found){ $option_value_found = $attribute_option_value; }
 
