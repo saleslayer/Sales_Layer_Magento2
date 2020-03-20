@@ -3022,7 +3022,12 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         //If the product has an attribute_set_id we find the existing by name or id, otherwise we use the default one.
         $sl_attribute_set_id = '';
         if (isset($sl_data[$this->product_field_attribute_set_id])){
-            $sl_attribute_set_id_value = $sl_data[$this->product_field_attribute_set_id];
+            $sl_attribute_set_id_value = '';
+            if (is_array($sl_data[$this->product_field_attribute_set_id]) && !empty($sl_data[$this->product_field_attribute_set_id])){
+                $sl_attribute_set_id_value = reset($sl_data[$this->product_field_attribute_set_id]);
+            }else if (!is_array($sl_data[$this->product_field_attribute_set_id])){
+                $sl_attribute_set_id_value = $sl_data[$this->product_field_attribute_set_id];
+            }
             if (!is_null($sl_attribute_set_id_value) && $sl_attribute_set_id_value != ''){
                 foreach ($this->attribute_set_collection as $attribute_set_collection_id => $attribute_set) {
                     if (is_numeric($sl_attribute_set_id_value)){
@@ -3329,7 +3334,12 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         //If the product has an attribute_set_id we find the existing by name or id, otherwise we use the default one.
         $sl_attribute_set_id = '';
         if (isset($sl_data[$this->product_field_attribute_set_id])){
-            $sl_attribute_set_id_value = $sl_data[$this->product_field_attribute_set_id];
+            $sl_attribute_set_id_value = '';
+            if (is_array($sl_data[$this->product_field_attribute_set_id]) && !empty($sl_data[$this->product_field_attribute_set_id])){
+                $sl_attribute_set_id_value = reset($sl_data[$this->product_field_attribute_set_id]);
+            }else if (!is_array($sl_data[$this->product_field_attribute_set_id])){
+                $sl_attribute_set_id_value = $sl_data[$this->product_field_attribute_set_id];
+            }
             if (!is_null($sl_attribute_set_id_value) && $sl_attribute_set_id_value != ''){
                 foreach ($this->attribute_set_collection as $attribute_set_collection_id => $attribute_set) {
                     if (is_numeric($sl_attribute_set_id_value)){
