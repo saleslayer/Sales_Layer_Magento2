@@ -319,6 +319,8 @@ class SalesLayerConn {
                 curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
             }
 
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            
             if (is_array($params)) {
 
                 curl_setopt($ch, CURLOPT_POST,       true);
