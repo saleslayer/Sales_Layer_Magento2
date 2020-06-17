@@ -3875,8 +3875,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                         }
 
-                        continue;
-
                         break;
                     case 'multiselect':
                         $value_to_update = $sl_options = '';
@@ -5640,8 +5638,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                                 case 'media_image':
                                     
-                                    continue;
-
                                     break;
 
                                 case 'select':
@@ -5691,7 +5687,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                                                 $error_format_message .= "## Error. The product format with SKU ".$sl_data['format_sku']." hasn't been assigned because the attribute ".$sl_format_title_name." with the value ".$sl_format_option_name." that doesn't exists.";
                                                 $linkable_form = false;
                                             }
-                                            continue;
                                         }
                                     }
 
