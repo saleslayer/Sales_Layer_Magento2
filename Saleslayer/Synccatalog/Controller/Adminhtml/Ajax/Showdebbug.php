@@ -68,10 +68,10 @@ class Showdebbug extends \Magento\Framework\App\Action\Action
        }else{
            $array_return['message_type'] = 'error';
            $array_return['function'] = $response_function['function'];
-           $array_return['content'] = $response_function[1];
-           $array_return['lines'] = $response_function['info'];
-           $array_return['warnings'] = $response_function['warnings'];
-           $array_return['errors'] = $response_function['errors'];
+           $array_return['content']  = (isset($response_function[1])?$response_function[1]:'');
+	       $array_return['lines']    = (isset($response_function['info'])?$response_function['info']:0);
+           $array_return['warnings'] = (isset($response_function['warnings'])?$response_function['warnings']:0);
+           $array_return['errors']   = (isset($response_function['errors'])?$response_function['errors']:0);
        }
 
        $response->setContents($this->jsonHelper->jsonEncode( $array_return));

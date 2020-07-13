@@ -8939,13 +8939,18 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         if (empty($files_to_delete)){ return false; }
 
         foreach ($files_to_delete as $file_to_delete) {
-            
-            $file_path = $log_dir_path.$file_to_delete;
 
-            if (file_exists($file_path)){
-            
-                unlink($file_path);
-            
+        	$file_array = explode('/',$file_to_delete);
+	        $file_to_delete = end($file_array);
+
+            if(preg_match('/[A-Za-z0-9]*.[A-Za-z0-9]{3}/',$file_to_delete)){
+	            $file_path = $log_dir_path.$file_to_delete;
+
+	            if (file_exists($file_path)){
+
+		            unlink($file_path);
+
+	            }
             }
 
         }
@@ -8965,10 +8970,12 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $response = array();
         $response[1] = array();
         $log_dir_path = $this->directoryListFilesystem->getPath('log').'/sl_logs/';
+	    $elements_array =  explode('/',$logfile);
+	    $logfile = end($elements_array);
 
         $exportlines = '';
 
-        if(file_exists( $log_dir_path.$logfile)){
+        if(preg_match('/[A-Za-z0-9]*.[A-Za-z0-9]{3}/',$logfile) &&  file_exists( $log_dir_path.$logfile)){
             $file = file($log_dir_path.$logfile);
             $listed = 0;
             $warnings = 0;
