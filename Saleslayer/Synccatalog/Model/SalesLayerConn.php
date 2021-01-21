@@ -20,7 +20,6 @@ class SalesLayerConn {
     public  $version_class               = '1.22';
 
     public  $url                         = 'api.saleslayer.com';
-    // public $url                         = 'localhost/Saleslayer/api/';
     
     public  $SSL                         = false;
     public  $SSL_Cert                    = null;
@@ -144,10 +143,11 @@ class SalesLayerConn {
         if ($this->connect_API_version   !== null)  $URL .= '&ver='.urlencode($this->connect_API_version);
         if ($this->__group_multicategory !== false) $URL .= '&group_category_id=1';
 
-        $URL .= '&parents_category_tree=1';
-        $URL .= '&first_parent_level=1';
         $URL .= '&same_parent_variants=1';
-
+        $URL .= '&first_parent_level=1';
+        $URL .= '&parents_category_tree=1';
+        $URL .= '&add_output_origin=1';
+        
         return $URL;
     }
 
@@ -318,9 +318,9 @@ class SalesLayerConn {
                 curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
                 curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
             }
-
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
             
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+
             if (is_array($params)) {
 
                 curl_setopt($ch, CURLOPT_POST,       true);
@@ -438,6 +438,11 @@ class SalesLayerConn {
                             if (isset($props['sizes']) && $props['sizes']) {
 
                                 $this->response_tables_info[$table]['fields'][$field]['image_sizes']  =$props['sizes'];
+                            }
+
+                            if (isset($props['origin']) && $props['origin']) {
+
+                                $this->response_tables_info[$table]['fields'][$field]['origin'] = $props['origin'];
                             }
                         }
                     }

@@ -6,13 +6,8 @@
         </job>
     </group>
     <group id="saleslayer_synccatalog_syncdata">
-        <job name="Saleslayer_Synccatalog_Syncdatacron" instance="Saleslayer\Synccatalog\Model\Syncdatacron" method="sync_data_connectors">
+        <job name="Saleslayer_Synccatalog_Syncdatacron" instance="Saleslayer\Synccatalog\Model\Syncdatacron" method="sync_data_connectors_db">
             <schedule>*/5 * * * *</schedule>
-        </job>
-    </group>
-    <group id="saleslayer_synccatalog_indexers">
-        <job name="Saleslayer_Synccatalog_Indexerscron" instance="Saleslayer\Synccatalog\Model\Indexerscron" method="sync_indexers">
-            <schedule>*/10 * * * *</schedule>
         </job>
     </group>
 </config>

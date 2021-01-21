@@ -274,57 +274,42 @@ class UpgradeSchema implements UpgradeSchemaInterface
             );
 
         }
-
-        if (version_compare($version, '2.2.2') < 0) {
-
-            $slyr_indexers_table = $connection->newTable(
-                $installer->getTable('saleslayer_synccatalog_indexers')
-            )->addColumn(
-                'id',
-                \Magento\Framework\DB\Ddl\Table::TYPE_BIGINT,
-                null,
-                ['identity' => true, 'unsigned' => true, 'nullable' => false, 'primary' => true],
-                'Id'
-            )->addColumn(
-                'sync_tries',
-                \Magento\Framework\DB\Ddl\Table::TYPE_INTEGER,
-                null,
-                ['nullable' => false, 'default' => 0],
-                'Sync Tries'
-            )->addColumn(
-                'indexer_id',
-                \Magento\Framework\DB\Ddl\Table::TYPE_TEXT,
-                255,
-                ['nullable' => false],
-                'Magento indexer id'
-            )->addColumn(
-                'indexer_title',
-                \Magento\Framework\DB\Ddl\Table::TYPE_TEXT,
-                255,
-                ['nullable' => true],
-                'Magento indexer title'
-            )->addColumn(
-                'indexer_status',
-                \Magento\Framework\DB\Ddl\Table::TYPE_TEXT,
-                255,
-                ['nullable' => false],
-                'Magento indexer status'
-            )->addIndex(
-                $installer->getIdxName(
-                    'saleslayer_synccatalog_indexers',
-                    ['id'],
-                    \Magento\Framework\DB\Adapter\AdapterInterface::INDEX_TYPE_INDEX
-                ),
-                ['id'],
-                ['type' => \Magento\Framework\DB\Adapter\AdapterInterface::INDEX_TYPE_INDEX]
-            )->setComment(
-                'Sales Layer Indexers Table'
-            );
-
-            $connection->createTable($slyr_indexers_table);
-            
-        }
  
+        if (version_compare($version, '2.3.0') < 0) {
+
+            $attributes_tables = array('catalog_category_entity_decimal', 'catalog_category_entity_int', 'catalog_category_entity_text', 'catalog_category_entity_varchar',
+                                        'catalog_product_entity_decimal', 'catalog_product_entity_int', 'catalog_product_entity_text', 'catalog_product_entity_varchar');
+
+            foreach ($attributes_tables as $attribute_table) {
+
+                if (strpos($attribute_table, '_text') !== false){
+
+                    try{
+
+                        $sql_create_idx = "CREATE INDEX SLYR_CREDENTIALS ON ".$attribute_table." (attribute_id, store_id, value(50));";
+                        $setup->getConnection()->query($sql_create_idx);
+                    
+                    }catch(\Exception $e){
+
+                        file_put_contents(BP.'/var/log/sl_logs/_upgrade_eschema_error_'.date('Y-m-d').'.dat', 'Error creating index: '.$e->getMessage()."\r\n", FILE_APPEND);
+
+                    }
+
+                }else{
+
+                    $setup->getConnection()->addIndex(
+                        $installer->getTable($attribute_table),
+                        'SLYR_CREDENTIALS',
+                        ['attribute_id', 'store_id', 'value'],
+                        \Magento\Framework\DB\Adapter\AdapterInterface::INDEX_TYPE_INDEX
+                    );
+
+                }
+
+            }
+
+        }
+    
         $setup->endSetup();
 
     }

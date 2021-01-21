@@ -67,7 +67,7 @@ class Edit extends \Magento\Backend\App\Action
      */
     public function execute()
     {
-
+ 
         // 1. Get ID and create model
         $id = $this->getRequest()->getParam('id');
         $model = $this->_objectManager->create('Saleslayer\Synccatalog\Model\Synccatalog');

@@ -15,27 +15,25 @@ use \Magento\Framework\Data\Collection\AbstractDb as resourceCollection;
 use Saleslayer\Synccatalog\Model\SalesLayerConn as SalesLayerConn;
 use Saleslayer\Synccatalog\Helper\Data as synccatalogDataHelper;
 use Saleslayer\Synccatalog\Helper\Config as synccatalogConfigHelper;
-use \Magento\Catalog\Model\Product\Gallery\Processor as galleryProcessor;
-use \Magento\Framework\Filesystem\Io\File as fileIo;
 use \Magento\Framework\Filesystem\DirectoryList  as directoryListFilesystem;
 use \Magento\Catalog\Model\Category as categoryModel;
-use \Magento\Catalog\Api\CategoryLinkManagementInterface as categoryLinkManagementInterface;
 use \Magento\Catalog\Model\Product as productModel;
-use \Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable as productConfigurableType;
 use \Magento\Eav\Model\Entity\Attribute as attribute;
 use \Magento\Eav\Model\Entity\Attribute\Set as attribute_set;
 use \Magento\Catalog\Api\ProductAttributeManagementInterface as productAttributeManagementInterface;
-use \Magento\Catalog\Api\Data\ProductLinkInterface as productLinkInterface;
-use \Magento\Catalog\Api\ProductLinkRepositoryInterface as productLinkRepositoryInterface;
-use \Magento\Store\Model\Store as storeModel;
-use \Magento\Store\Model\System\Store as storeSystemModel;
 use \Magento\Indexer\Model\Indexer as indexer;
-use \Magento\Indexer\Model\Indexer\Collection as indexerCollection;
 use \Magento\Framework\App\ResourceConnection as resourceConnection;
 use \Magento\Eav\Model\ResourceModel\Entity\Attribute\Option\Collection as collectionOption;
 use \Magento\Cron\Model\Schedule as cronSchedule;
 use \Magento\Framework\App\Config\ScopeConfigInterface as scopeConfigInterface;
-use \Magento\Tax\Model\ClassModel as tax_class_model;
+use \Magento\CatalogUrlRewrite\Model\CategoryUrlPathGenerator as categoryUrlPathGenerator;
+use \Magento\CatalogUrlRewrite\Model\ProductUrlPathGenerator as productUrlPathGenerator;
+use \Magento\CatalogInventory\Model\Configuration as catalogInventoryConfiguration;
+use \Magento\Framework\App\DeploymentConfig as deploymentConfig;
+use \Magento\Eav\Model\Config as eavConfig;
+use \Magento\Framework\App\Cache\TypeListInterface as typeListInterface;
+use \Magento\Framework\App\ProductMetadataInterface as productMetadata;
+use \Magento\Catalog\Model\Product\Attribute\Source\Countryofmanufacture as countryOfManufacture;
 
 /**
  * Class Saleslayer_Synccatalog_Model_Autosynccron
@@ -45,7 +43,6 @@ class Autosynccron extends Synccatalog{
     protected       $sl_time_ini_auto_sync_process;
     protected       $cron_schedule_table            = 'cron_schedule';
     protected       $cronSchedule;
-
 
     /**
      * Sales Layer Autosync constructor.
@@ -57,27 +54,25 @@ class Autosynccron extends Synccatalog{
                 SalesLayerConn $salesLayerConn,
                 synccatalogDataHelper $synccatalogDataHelper,
                 synccatalogConfigHelper $synccatalogConfigHelper,
-                galleryProcessor $galleryProcessor,
-                fileIo $fileIo,
                 directoryListFilesystem $directoryListFilesystem,
                 categoryModel $categoryModel,
-                categoryLinkManagementInterface $categoryLinkManagementInterface,
                 productModel $productModel,
-                productConfigurableType $productConfigurableType,
                 attribute $attribute,
                 attribute_set $attribute_set,
                 productAttributeManagementInterface $productAttributeManagementInterface,
-                productLinkInterface $productLinkInterface,
-                productLinkRepositoryInterface $productLinkRepositoryInterface,
-                storeModel $storeModel,
-                storeSystemModel $storeSystemModel,
                 indexer $indexer,
-                indexerCollection $indexerCollection,
                 resourceConnection $resourceConnection,
                 collectionOption $collectionOption,
                 cronSchedule $cronSchedule,
                 scopeConfigInterface $scopeConfigInterface,
-                tax_class_model $tax_class_model,
+                categoryUrlPathGenerator $categoryUrlPathGenerator,
+                productUrlPathGenerator $productUrlPathGenerator,
+                catalogInventoryConfiguration $catalogInventoryConfiguration,
+                deploymentConfig $deploymentConfig,
+                eavConfig $eavConfig,
+                typeListInterface $typeListInterface,
+                productMetadata $productMetadata,
+                countryOfManufacture $countryOfManufacture,
                 resource $resource = null,
                 resourceCollection $resourceCollection = null,
                 array $data = []) {
@@ -86,27 +81,25 @@ class Autosynccron extends Synccatalog{
                             $salesLayerConn, 
                             $synccatalogDataHelper, 
                             $synccatalogConfigHelper,
-                            $galleryProcessor, 
-                            $fileIo, 
                             $directoryListFilesystem,
                             $categoryModel, 
-                            $categoryLinkManagementInterface,
                             $productModel,
-                            $productConfigurableType,
                             $attribute,
                             $attribute_set,
                             $productAttributeManagementInterface,
-                            $productLinkInterface,
-                            $productLinkRepositoryInterface,
-                            $storeModel,
-                            $storeSystemModel,
                             $indexer,
-                            $indexerCollection,
                             $resourceConnection,
                             $collectionOption,
                             $cronSchedule,
                             $scopeConfigInterface,
-                            $tax_class_model,
+                            $categoryUrlPathGenerator,
+                            $productUrlPathGenerator,
+                            $catalogInventoryConfiguration,
+                            $deploymentConfig,
+                            $eavConfig,
+                            $typeListInterface,
+                            $productMetadata,
+                            $countryOfManufacture,
                             $resource,
                             $resourceCollection,
                             $data);
@@ -144,6 +137,10 @@ class Autosynccron extends Synccatalog{
     
     }   
 
+    /**
+     * Function to check if sync data crons are stuck
+     * @return void
+     */
     private function check_sync_data_crons(){
 
         $now = strtotime('now');
@@ -196,7 +193,7 @@ class Autosynccron extends Synccatalog{
 
             if ($interval >= 480){
 
-                $this->debbug('Killing cron job '.$running_cron['job_code'].' with schedule_id '.$running_cron['schedule_id'].'. Scheduled at '.$running_cron['scheduled_at'].'('. strtotime($running_cron['scheduled_at']).'), executed at '.$running_cron['executed_at'].'('. strtotime($running_cron['scheduled_at']).') with time interval of '.$interval.' seconds.', 'autosync');
+                $this->debbug('Killing cron job '.$running_cron['job_code'].' with schedule_id '.$running_cron['schedule_id'].'. Scheduled at '.$running_cron['scheduled_at'].', executed at '.$running_cron['executed_at'].' with time interval of '.$interval.' seconds.', 'autosync');
 
                 try{
 
@@ -217,7 +214,6 @@ class Autosynccron extends Synccatalog{
 
     }
 
-
     /**
      * Function to check and synchronize Sales Layer connectors with auto-synchronization enabled.
      * @return void
@@ -225,9 +221,11 @@ class Autosynccron extends Synccatalog{
     public function auto_sync_connectors(){
 
         $this->loadConfigParameters();
+        $this->load_magento_variables();
 
         $this->debbug("==== AUTOSync INIT ".date('Y-m-d H:i:s')." ====", 'autosync');
-
+        
+        $this->delete_sl_logs_since_days();
         $this->check_sync_data_crons();
 
         $this->sl_time_ini_auto_sync_process = microtime(1);
@@ -236,120 +234,127 @@ class Autosynccron extends Synccatalog{
 
         if (isset($items_processing['count']) && $items_processing['count'] > 0){
 
-            $this->debbug("There are still ".$items_processing['count']." items to process, wait until they have finished and synchronize again.", 'autosync');
+            $this->debbug("There are still ".$items_processing['count']." items processing, wait until is finished and synchronize again.", 'autosync');
            
         }else{
 
-            $indexers_processing = $this->connection->query(" SELECT count(*) as count FROM ".$this->saleslayer_indexers_table)->fetch();
+            try {
 
-            if (isset($indexers_processing['count']) && $indexers_processing['count'] > 0){
+                $all_connectors = $this->getConnectors();
+                
+                $now = strtotime('now');
+                
+                if (!empty($all_connectors)){
 
-                $this->debbug("There are still ".$indexers_processing['count']." indexers to process, wait until they have finished and synchronize again.", 'autosync');
-               
-            }else{
+                    $connectors_to_check = array();
 
-                try {
+                    foreach ($all_connectors as $idx_conn => $connector) {
 
-                    $all_connectors = $this->getConnectors();
-                    
-                    $now = strtotime('now');
-                    
-                    if (!empty($all_connectors)){
+                        if ($connector['auto_sync'] > 0){
+                            
+                            $connector_last_sync = $connector['last_sync'];
+                            $connector_last_sync_unix = strtotime($connector_last_sync);
+                            
+                            $unix_to_update = $now - ($connector['auto_sync'] * 3600);
+                            
+                            if ($connector_last_sync_unix == ''){
 
-                        $connectors_to_check = array();
+                                $connector['unix_to_update'] = $unix_to_update;
+                                $connectors_to_check[] = $connector;
 
-                        foreach ($all_connectors as $idx_conn => $connector) {
-
-                            if ($connector['auto_sync'] > 0){
+                            }else{
                                 
-                                $connector_last_sync = $connector['last_sync'];
-                                $connector_last_sync_unix = strtotime($connector_last_sync);
-                                
-                                $unix_to_update = $now - ($connector['auto_sync'] * 3600);
-                                
-                                if ($connector_last_sync_unix == ''){
-
-                                    $connector['unix_to_update'] = $unix_to_update;
-                                    $connectors_to_check[] = $connector;
-
-                                }else{
+                                if ($connector['auto_sync'] >= 24){
                                     
-                                    if ($connector['auto_sync'] >= 24){
-                                        
-                                        $unix_to_update_hour = mktime($connector['auto_sync_hour'],0,0,date('m', $unix_to_update),date('d', $unix_to_update),date('Y', $unix_to_update));
-                                        
-                                        if ($connector_last_sync_unix < $unix_to_update_hour){
-                                        
-                                            $connector['unix_to_update'] = $unix_to_update_hour;
-                                            $connectors_to_check[] = $connector;
-
-                                        }
-
-
-                                    }else if ($connector_last_sync_unix < $unix_to_update){
-
-                                        $connector['unix_to_update'] = $unix_to_update;
+                                    $unix_to_update_hour = mktime($connector['auto_sync_hour'],0,0,date('m', $unix_to_update),date('d', $unix_to_update),date('Y', $unix_to_update));
+                                    
+                                    if ($connector_last_sync_unix < $unix_to_update_hour){
+                                    
+                                        $connector['unix_to_update'] = $unix_to_update_hour;
                                         $connectors_to_check[] = $connector;
 
                                     }
 
+                                }else if ($connector_last_sync_unix < $unix_to_update){
+
+                                    $connector['unix_to_update'] = $unix_to_update;
+                                    $connectors_to_check[] = $connector;
+
                                 }
 
                             }
 
                         }
-
-                        if ($connectors_to_check){
-
-                            uasort($connectors_to_check, array($this, 'sort_by_unix_to_update'));
-
-                            foreach ($connectors_to_check as $connector) {
-
-                                if ($connector['auto_sync'] >= 24){
-
-                                    $last_sync_time = mktime($connector['auto_sync_hour'],0,0,date('m', $now),date('d', $now),date('Y', $now));
-                                    $last_sync = date('Y-m-d H:i:s', $last_sync_time);
-                                
-                                }else{
-                                
-                                    $last_sync = date('Y-m-d H:i:s');
-                                
-                                }
-
-                                $connector_id = $connector['connector_id'];
-
-                                $this->debbug("Connector to auto-synchronize: " . $connector_id, 'autosync');
-
-                                $time_ini_cron_sync = microtime(1);
-
-                                $time_random = rand(10, 20);
-                                sleep($time_random);
-                                $this->debbug("#### time_random: " . $time_random . ' seconds.', 'autosync');
-                                
-                                $data_return = $this->store_sync_data($connector_id, $last_sync);
-                                
-                                $this->debbug("#### time_cron_sync: " . (microtime(1) - $time_ini_cron_sync - $time_random) . ' seconds.', 'autosync');
-                                
-                                if (is_array($data_return)){ break; }
-                                
-                            }
-
-                        }else{
-
-                            $this->debbug("Currently there aren't connectors to synchronize.", 'autosync');
-
-                        }
-                  
-                    }else{
-
-                        $this->debbug("There aren't any configured connectors.", 'autosync');
 
                     }
-                } catch (\Exception $e) {
 
-                    $this->debbug('## Error. Autosync process: '.$e->getMessage(), 'autosync');
+                    if ($connectors_to_check){
+
+                        uasort($connectors_to_check, array($this, 'sort_by_unix_to_update'));
+
+                        foreach ($connectors_to_check as $connector) {
+
+                            if ($connector['auto_sync'] >= 24){
+
+                                $last_sync_time = mktime($connector['auto_sync_hour'],0,0,date('m', $now),date('d', $now),date('Y', $now));
+                                $last_sync = date('Y-m-d H:i:s', $last_sync_time);
+                            
+                            }else{
+                            
+                                $last_sync = date('Y-m-d H:i:s');
+                            
+                            }
+
+                            $connector_id = $connector['connector_id'];
+
+                            $this->debbug("Connector to auto-synchronize: " . $connector_id, 'autosync');
+
+                            $time_ini_cron_sync = microtime(1);
+
+                            $time_random = rand(10, 20);
+                            sleep($time_random);
+                            $this->debbug("#### time_random: " . $time_random . ' seconds.', 'autosync');
+                            
+                            $data_return = $this->store_sync_data($connector_id, $last_sync);
+                            
+                            $this->debbug("#### time_cron_sync: " . (microtime(1) - $time_ini_cron_sync - $time_random) . ' seconds.', 'autosync');
+
+                            
+                            if (is_array($data_return)){
+
+                                //If the connector result has data we break process so it can sync.
+                                if (!empty($data_return)){ 
+
+                                    break;
+
+                                }
+
+                                //If the connector result data is empty we continue to the next connector.
+
+                            }else{
+
+                                //If the connector result is not an array must be an error message..
+                                $this->debbug($data_return, 'autosync');
+
+                            }
+
+                            
+                        }
+
+                    }else{
+
+                        $this->debbug("Currently there aren't connectors to synchronize.", 'autosync');
+
+                    }
+              
+                }else{
+
+                    $this->debbug("There aren't any configured connectors.", 'autosync');
 
                 }
+            } catch (\Exception $e) {
+
+                $this->debbug('## Error. Autosync process: '.$e->getMessage(), 'autosync');
 
             }
 
@@ -360,4 +365,62 @@ class Autosynccron extends Synccatalog{
         $this->debbug("==== AUTOSync END ====", 'autosync');
 
     }
+
+    /**
+     * Function to delete SL logs since X days
+     * @return void
+     */
+    private function delete_sl_logs_since_days(){
+
+        if (in_array($this->delete_sl_logs_since_days, array('', null, 0))) return false;
+
+        $time_ini_delete_sl_logs = microtime(1);
+        
+        $log_folder_files = scandir($this->sl_logs_path);
+
+        if (!empty($log_folder_files)){
+
+            if (($key = array_search('.', $log_folder_files)) !== false) unset($log_folder_files[$key]);
+            if (($key = array_search('..', $log_folder_files)) !== false) unset($log_folder_files[$key]);
+            
+            if (!empty($log_folder_files)){
+
+                $filters_replace = array('/(_error_debbug_log_saleslayer_)/', '/(_debbug_log_saleslayer_timers_)/', '/(_debbug_log_saleslayer_auto_sync_)/', '/(_debbug_log_saleslayer_sync_data_)/', '/(_debbug_log_saleslayer_)/', '/(.dat)/');
+
+                foreach ($log_folder_files as $log_folder_file) {
+                    
+                    if (strpos($log_folder_file, '_debbug_log_saleslayer_') !== false){
+                        
+                        $file_date = preg_replace($filters_replace, '', $log_folder_file);            
+                        $is_valid_date = (bool)strtotime($file_date);
+
+                        if ($is_valid_date){
+
+                            if (strtotime($file_date) < strtotime('-'.$this->delete_sl_logs_since_days.' days')){
+
+                                $file_path = $this->sl_logs_path.$log_folder_file;
+
+                                if (file_exists($file_path)){
+
+                                    $this->debbug('Deleting SL log: '.$log_folder_file.' for being older than '.$this->delete_sl_logs_since_days.' days.');
+                                    unlink($file_path);
+
+                                }
+
+                            }
+
+                        }
+
+                    }
+
+                }
+                
+            }
+
+        }
+
+        // $this->debbug('##### time_delete_sl_logs: '.(microtime(1) - $time_ini_delete_sl_logs).' seconds');
+
+    }
+
 }

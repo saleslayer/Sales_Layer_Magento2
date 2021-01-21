@@ -482,7 +482,28 @@
                  }
              });
 
+           // var tt = setInterval(function(){ startTime() }, 1000);
+
+           // setTimeout(function() { 
+           //  clearInterval(tt); 
+           //  }, 
+           //  10000
+           //  );
+
+           function showlogfiles_init(){
+
+            // console.log('ejecutamos test despues de 10 segundos');
             sync_custom_command('showlogfiles');
+
+           }
+
+           // window.onload=setInterval(test(), 100000000);
+
+            setTimeout(function(){
+                showlogfiles_init();
+            }, 5000);   
+
+            // sync_custom_command('showlogfiles');
         });
     })
 </script>

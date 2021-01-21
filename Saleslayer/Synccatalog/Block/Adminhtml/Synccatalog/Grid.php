@@ -60,7 +60,7 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
         $collection = $this->_collectionFactory->create();
         /* @var $collection \Saleslayer\Synccatalog\Model\ResourceModel\Synccatalog\Collection */
 
-        // $file = BP.'/_debbug_log_saleslayer_test.txt';
+        // $file = BP.'/var/log/sl_logs/_debbug_log_saleslayer_test.txt';
 
         // // $stores_data = $this->_systemStore->getStoreValuesForForm(false, true);
 
@@ -112,6 +112,11 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
         //     $collection->addItem($connector);
         //     // $collection->save();
         // }
+
+        // foreach ($collection as $keyConn => $connector) {
+        
+
+        // }
         
         // file_put_contents($file, 'test data: '.print_r($collection->getData(),1)."\n", FILE_APPEND);
 
@@ -147,6 +152,16 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
                 'column_css_class' => 'col-date'
             ]
         );
+
+        // $this->addColumn(
+        //     'sync_data',
+        //     [
+        //         'header' => __('Synchronization Data'),
+        //         'index' => 'sync_ata',
+        //         'header_css_class' => 'col-sync',
+        //         'column_css_class' => 'col-sync'
+        //     ]
+        // );
 
         $test = parent::_prepareColumns();
 

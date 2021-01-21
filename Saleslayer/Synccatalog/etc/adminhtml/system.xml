@@ -16,11 +16,11 @@
                     <comment>Sales Layer logs are stored at /var/logs/</comment>
                     <source_model>Saleslayer\Synccatalog\Model\Config\ActivateDebugLogs\DebugerLevels</source_model>
                 </field>
-                <field id="manage_indexers" translate="label comment" type="select" sortOrder="2" showInDefault="1" showInWebsite="1" showInStore="0">
+                <!--<field id="manage_indexers" translate="label comment" type="select" sortOrder="2" showInDefault="1" showInWebsite="1" showInStore="0">
                     <label>Manage indexers</label>
                     <comment>Indexers will be stopped when a connector stores data to synchronize, and after all data has been synchronized, they'll recover their previous state and get reindexed.</comment>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
-                </field>
+                </field>-->
                 <field id="sql_to_insert_limit" translate="label comment" sortOrder="3" showInDefault="1" showInWebsite="1" showInStore="0">
                     <label>SQL limit rows to insert</label>
                     <comment>When storing the information, number of rows per batch that will be inserted into database. Please enter a value between at least 1 and 20.</comment>
@@ -42,6 +42,17 @@
                     <label>Until this hour</label>
                     <comment>For this hour to work you need to fill in the hour FROM. Please enter a value between at least 0 and 23. Empty or set both to 0 to cancel this option.</comment>
                     <backend_model>Saleslayer\Synccatalog\Model\Config\SyncdataHour\BackendModel</backend_model>
+                    <validate>validate-digits</validate>
+                </field>
+                <field id="format_type_creation" translate="label comment" type="select" sortOrder="7" showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Product format Type on creation</label>
+                    <comment>Products formats will be created with this type</comment>
+                    <source_model>Saleslayer\Synccatalog\Model\Config\FormatTypeCreation\TypeCreation</source_model>
+                </field>
+                <field id="delete_sl_logs_since_days" translate="label comment" sortOrder="8" showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Delete SL logs from more than X days ago</label>
+                    <comment>Please enter a value between at least 0 and 31. Empty or 0 will not delete SL logs.</comment>
+                    <backend_model>Saleslayer\Synccatalog\Model\Config\DeleteSLLogsSinceDays\BackendModel</backend_model>
                     <validate>validate-digits</validate>
                 </field>
             </group>

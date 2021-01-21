@@ -131,6 +131,7 @@ class Parameters extends \Magento\Backend\Block\Widget\Form\Generic implements \
                     'required' => false,
                     'values' => $this->_systemStore->getStoreValuesForForm(false, true),
                     'disabled' => false,
+                    'after_element_html' => "<br><small>If only 'All Store Views' is selected, the information will by synchronized at all store views, otherwise only in the selected ones.</small>",
                     'class' => 'conn_field'
                 ]
             );

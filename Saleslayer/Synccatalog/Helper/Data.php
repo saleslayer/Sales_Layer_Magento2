@@ -105,7 +105,8 @@ class Data extends \Magento\Framework\App\Helper\AbstractHelper
      * @param string $optionDefaultValue value to save  if $option_stores view is null
      * return booleano
      */
-    public function updateAttributeOption($attribute_code, $option_id, $option_value, $option_data){
+    // public function updateAttributeOption($attribute_code, $option_id, $option_value, $option_data){
+    public function updateAttributeOption($attribute_code, $option_id, $option_data){
         
         // $this->debbug_data('updateAttributeOption - attribute_code: '.$attribute_code.' - option_id: '.$option_id.' - option_value: '.$option_value.' - option_data: '.print_R($option_data,1));
      

@@ -22,6 +22,11 @@ class Showdebbug extends \Magento\Framework\App\Action\Action
         $this->modelo = $modelo;
     }
 
+    // protected function _isAllowed()
+    // {
+    //     return $this->_authorization->isAllowed('Saleslayer_Synccatalog::showdebbug');
+    // }
+
     public function execute(){
 
        $command = $this->getRequest()->getParam('logcommand');
@@ -37,7 +42,7 @@ class Showdebbug extends \Magento\Framework\App\Action\Action
                break;
            case 'showservertime':
                $response_function[0] = 1;
-               $response_function[1] =  'Current server time: '.date('H:i');
+               $response_function[1] = 'Current server time: '.date('H:i');
                $response_function['seconds'] = date('s');
                $response_function['function'] = 'showservertime';
                $response->setHeader('Content-type', 'text/plain');
@@ -47,7 +52,6 @@ class Showdebbug extends \Magento\Framework\App\Action\Action
                $response->setHeader('Content-type', 'text/plain');
                break;
        }
-
 
        if ($response_function[0] == 1){
            $array_return['message_type'] = 'success';
@@ -68,10 +72,10 @@ class Showdebbug extends \Magento\Framework\App\Action\Action
        }else{
            $array_return['message_type'] = 'error';
            $array_return['function'] = $response_function['function'];
-           $array_return['content']  = (isset($response_function[1])?$response_function[1]:'');
+	       $array_return['content']  = (isset($response_function[1])?$response_function[1]:'');
 	       $array_return['lines']    = (isset($response_function['info'])?$response_function['info']:0);
-           $array_return['warnings'] = (isset($response_function['warnings'])?$response_function['warnings']:0);
-           $array_return['errors']   = (isset($response_function['errors'])?$response_function['errors']:0);
+	       $array_return['warnings'] = (isset($response_function['warnings'])?$response_function['warnings']:0);
+	       $array_return['errors']   = (isset($response_function['errors'])?$response_function['errors']:0);
        }
 
        $response->setContents($this->jsonHelper->jsonEncode( $array_return));

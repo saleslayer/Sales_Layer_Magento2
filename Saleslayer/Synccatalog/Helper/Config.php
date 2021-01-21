@@ -13,6 +13,8 @@ class Config extends AbstractHelper
     const CONFIG_SYNCCATALOG_GENERAL_AVOID_IMAGES_UPDATES = 'synccatalog/general/avoid_images_updates';
     const CONFIG_SYNCCATALOG_GENERAL_SYNC_DATA_HOUR_FROM = 'synccatalog/general/sync_data_hour_from';
     const CONFIG_SYNCCATALOG_GENERAL_SYNC_DATA_HOUR_UNTIL = 'synccatalog/general/sync_data_hour_until';
+    const CONFIG_SYNCCATALOG_GENERAL_FORMAT_TYPE_CREATION  = 'synccatalog/general/format_type_creation';
+    const CONFIG_SYNCCATALOG_GENERAL_DELETE_SL_LOGS_SINCE_DAYS = 'synccatalog/general/delete_sl_logs_since_days';
 
     /**
      * Activate debug logs debuger levels
@@ -25,7 +27,7 @@ class Config extends AbstractHelper
 
     /**
      * Retrieve debuger level option
-     * @return integer
+     * @return int
      */
     public function getDebugerLevel(){
 
@@ -80,6 +82,26 @@ class Config extends AbstractHelper
     public function getSyncDataHourUntil(){
 
         return (int) $this->scopeConfig->getValue(self::CONFIG_SYNCCATALOG_GENERAL_SYNC_DATA_HOUR_UNTIL);
+    
+    }
+
+    /**
+     * Retrieve format type creation option
+     * @return string
+     */
+    public function getFormatTypeCreation(){
+
+        return (string) $this->scopeConfig->getValue(self::CONFIG_SYNCCATALOG_GENERAL_FORMAT_TYPE_CREATION);
+    
+    }
+
+    /**
+     * Retrieve delete SL logs since days option
+     * @return int
+     */
+    public function getDeleteSLLogsSinceDays(){
+
+        return (int) $this->scopeConfig->getValue(self::CONFIG_SYNCCATALOG_GENERAL_DELETE_SL_LOGS_SINCE_DAYS);
     
     }
 
