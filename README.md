@@ -1,7 +1,7 @@
 <h1><a href="https://saleslayer.com/" title="Title">Sales Layer</a> Magento 2 plugin</h1>
 Sales Layer plugin allows you to easily synchronize your catalogue information with Magento 2.
 
-<h2>Please check the important notes for the installation available at https://support.saleslayer.com/magento/important-notes-about-magento-connector (In some cases, a Sales Layer account might be needed to access the documentation).</h2>
+<h3>Please check the important notes for the installation available at https://support.saleslayer.com/magento/important-notes-about-magento-connector (In some cases, a Sales Layer account might be needed to access the documentation).</h3>
 
 <h2>How To Start</h2>
 
