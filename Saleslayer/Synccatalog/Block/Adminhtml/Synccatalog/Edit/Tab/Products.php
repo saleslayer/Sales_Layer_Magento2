@@ -87,16 +87,22 @@ class Products extends \Magento\Backend\Block\Widget\Form\Generic implements \Ma
         if (empty($modelData)){
             $modelData['store_view_ids'] = array('0') ;
         }else{
-            $modelData['store_view_ids'] = json_decode($modelData['store_view_ids'],1);
-            if (!is_null($modelData['format_configurable_attributes'])){
+            if (isset($modelData['store_view_ids'])
+                && !is_array($modelData['store_view_ids'])
+                && !is_null($modelData['store_view_ids'])){
+                $modelData['store_view_ids'] = json_decode($modelData['store_view_ids'],1);
+            }else{
+                $modelData['store_view_ids'] = array('0') ;
+            }
+            if (isset($modelData['format_configurable_attributes'])
+                && !is_array($modelData['format_configurable_attributes'])
+                && !is_null($modelData['format_configurable_attributes'])){
                 $modelData['format_configurable_attributes'] = json_decode($modelData['format_configurable_attributes'],1);
             }
-            if ($modelData['avoid_stock_update'] == '1'){
+            if (isset($modelData['avoid_stock_update']) && $modelData['avoid_stock_update'] == '1'){
                 $avoid_stock_update = true;
             }
-            if ($modelData['products_previous_categories'] == '1'){
-                $products_previous_categories = true;
-            }else{
+            if (isset($modelData['products_previous_categories']) && $modelData['products_previous_categories'] == '0'){
                 $products_previous_categories = false;
             }
         }

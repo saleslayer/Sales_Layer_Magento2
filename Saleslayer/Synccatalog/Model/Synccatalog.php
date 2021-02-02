@@ -3130,7 +3130,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
         $is_format = '';
         if ($type == 'format'){ $is_format = 'format '; }
 
-        $this->debbug(" > Storing product ".$is_format."images SL ID: ".$item_data['id']);
+        $this->debbug(" > Storing product ".$is_format." images SL ID: ".$item_data['id']);
         
         $sl_product_images = array();
         if ($type == 'format'){
@@ -3324,6 +3324,10 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
                 $this->debbug('## Error. Insert syncdata SQL message: '.$e->getMessage());
 
             }
+
+        }else{
+
+            $this->checkItemMediaAttributes($mg_item_id);
 
         }
 
@@ -3677,7 +3681,76 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
             if ($this->sl_DEBBUG > 2) $this->debbug('# time_process_final_images: ', 'timer', (microtime(1) - $time_ini_process_final_images));
 
         }
+        
+        $this->checkItemMediaAttributes($item_id);
 
+    }
+
+    /**
+     * Function to check if there are products with images and no image types assigned
+     * @param  int      $item_id    MG item id to check
+     * @return void
+     */
+    private function checkItemMediaAttributes($item_id){
+
+        $time_ini_check_item_media_attributes = microtime(1);
+
+        $existing_images = $this->getProductMediaGalleryEntries($item_id);
+        
+        if (!empty($existing_images)){
+
+            $media_attributes = array('image' => 0, 'small_image' => 0, 'thumbnail' => 0, 'swatch_image' => 0);
+            $main_image_id = 0;
+
+            foreach ($existing_images as $image_id => $existing_image){
+            
+                if ($main_image_id == 0) $main_image_id = $image_id;
+
+                if (isset($existing_image['types']) && !empty($existing_image['types'])){
+
+                    foreach ($existing_image['types'] as $existing_item_type){
+                        
+                        if (isset($media_attributes[$existing_item_type])){
+
+                            if ($media_attributes[$existing_item_type] != 0){
+
+                                // $this->debbug('## Error. Image type '.$existing_item_type.' is already assigned to another image id in media_attributes: '.print_r($media_attributes,1));
+
+                            }else{
+                                
+                                $media_attributes[$existing_item_type] = $image_id;
+
+                                if ($existing_item_type == 'image' && $main_image_id !== $image_id) $main_image_id = $image_id;
+
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+            $image_data_to_update = array();
+
+            foreach ($media_attributes as $image_type => $image_id) {
+                
+                if ($image_id == 0) $image_data_to_update[$image_type] = $existing_images[$main_image_id]['file'];
+
+            }
+
+            if (!empty($image_data_to_update)){
+
+                $this->setProductImageTypes($item_id, 'catalog_product_entity', $image_data_to_update, $this->product_entity_type_id);
+
+            }
+
+        }
+                
+        if ($this->sl_DEBBUG > 2) $this->debbug('# time_check_item_media_attributes: ', 'timer', (microtime(1) - $time_ini_check_item_media_attributes));
+       
     }
 
     /**
@@ -4738,30 +4811,49 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
 
                         break;
 
+                    case 'price':
                     case 'special_price':
+
+                        $price_value = '';
                     
-                        $special_price_value = '';
-                                    
-                        (is_array($format['data'][$sl_format_field])) ? $special_price_value = reset($format['data'][$sl_format_field]) : $special_price_value = $format['data'][$sl_format_field];
-                        
-                        if (!is_numeric($special_price_value) && filter_var($special_price_value, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION)){
+                        (is_array($format['data'][$sl_format_field])) ? $price_value = reset($format['data'][$sl_format_field]) : $price_value = $format['data'][$sl_format_field];
+
+                        if (!is_numeric($price_value)){
                             
-                            $special_price_value = filter_var($special_price_value, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
-                            
-                            if (!is_numeric($special_price_value) || $special_price_value === ''){
+                            if (strpos($price_value, ',') !== false){
                                 
-                                $special_price_value = null;
-                        
-                            }
-
-                        }else if ($special_price_value <= 0){
+                                $price_value = str_replace(',', '.', $price_value);
+                                
+                            } 
                             
-                            $special_price_value = null;
-                        
+                            if (filter_var($price_value, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION)){
+                                
+                                $price_value = filter_var($price_value, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
+                                
+                            }
+                            
+                            if (!is_numeric($price_value) || $price_value === ''){
+                                                        
+                                $price_value = null;
+                       
+                            }
+                            
+                        }else if ($price_value <= 0){
+                                                    
+                            $price_value = null;
+                       
                         }
-                        
-                        $sl_format_data_to_sync[$mg_format_field] = $special_price_value;
 
+                        if ((!is_null($price_value)) || (is_null($price_value) && $mg_format_field == 'special_price')){
+
+                            $sl_format_data_to_sync[$mg_format_field] = $price_value;
+                       
+                        }else if (is_null($price_value) && $mg_format_field == 'price'){
+
+                            $this->debbug('## Error. Product format price does not have a valid format, it will not be updated.');
+
+                        }
+                    
                         break;
                     
                     default:
@@ -10840,29 +10932,48 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
 
                         break;
 
+                    case 'price':
                     case 'special_price':
                     
-                        $special_price_value = '';
-                                    
-                        (is_array($product['data'][$sl_product_field])) ? $special_price_value = reset($product['data'][$sl_product_field]) : $special_price_value = $product['data'][$sl_product_field];
+                        $price_value = '';
                         
-                        if (!is_numeric($special_price_value) && filter_var($special_price_value, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION)){
-                            
-                            $special_price_value = filter_var($special_price_value, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
-                            
-                            if (!is_numeric($special_price_value) || $special_price_value === ''){
-                                
-                                $special_price_value = null;
-                        
-                            }
+                        (is_array($product['data'][$sl_product_field])) ? $price_value = reset($product['data'][$sl_product_field]) : $price_value = $product['data'][$sl_product_field];
 
-                        }else if ($special_price_value <= 0){
+                        if (!is_numeric($price_value)){
                             
-                            $special_price_value = null;
-                        
+                            if (strpos($price_value, ',') !== false){
+                                
+                                $price_value = str_replace(',', '.', $price_value);
+                                
+                            }                             
+
+                            if (filter_var($price_value, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION)){
+                                
+                                $price_value = filter_var($price_value, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
+                                
+                            }
+                            
+                            if (!is_numeric($price_value) || $price_value === ''){
+                                                        
+                                $price_value = null;
+
+                            }
+                            
+                        }else if ($price_value <= 0){
+                                                    
+                            $price_value = null;
+                    
                         }
-                        
-                        $sl_product_data_to_sync[$mg_product_field] = $special_price_value;
+
+                        if ((!is_null($price_value)) || (is_null($price_value) && $mg_product_field == 'special_price')){
+
+                            $sl_product_data_to_sync[$mg_product_field] = $price_value;
+                    
+                        }else if (is_null($price_value) && $mg_product_field == 'price'){
+
+                            $this->debbug('## Error. Product price does not have a valid format, it will not be updated.');
+
+                        }
 
                         break;
 
