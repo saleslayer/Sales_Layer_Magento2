@@ -4,6 +4,8 @@ Sales Layer plugin allows you to easily synchronize your catalogue information w
 <p>
 	<h2>Important Notes</h2>
 	Please check the important notes for the installation available at https://support.saleslayer.com/magento/important-notes-about-magento-connector (In some cases, a Sales Layer account might be needed to access the documentation).
+	<h2>Version compatibility</h2>
+	From 2.1.4 to 2.3.6
 </p>
 
 <h2>How To Start</h2>
