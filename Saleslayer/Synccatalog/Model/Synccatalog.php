@@ -2716,7 +2716,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
         $time_ini_product_url_rewrite = microtime(1);
 
         $url_rewrite_table = $this->getTable('url_rewrite');
-        $catalog_url_rewrite_product_category_table = $this->getTable('catalog_url_rewrite_product_category');        
+        $catalog_url_rewrite_product_category_table = $this->getTable('catalog_url_rewrite_product_category');
 
         foreach ($store_view_ids as $store_view_id) {
             
@@ -2790,6 +2790,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
 
             $categories = $product->getCategoryCollection();
             $categories->addAttributeToSelect('url_key');
+            $categories->setStoreId($store_view_id);
 
             $time_ini_categories = microtime(1);
 
