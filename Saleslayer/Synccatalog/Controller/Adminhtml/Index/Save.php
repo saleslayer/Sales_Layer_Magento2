@@ -134,17 +134,26 @@ class Save extends \Magento\Backend\App\Action
                         $auto_sync = $this->getRequest()->getParam('auto_sync');
                         $this->getRequest()->getParam('category_is_anchor') == 1 ? $is_anchor = 1 : $is_anchor = 0;
                         
-                        $model->login_saleslayer($connector_id, $secret_key);
-                        $model->update_conn_field($connector_id, 'store_view_ids', $store_view_ids);
-                        $model->update_conn_field($connector_id, 'format_configurable_attributes', $format_configurable_attributes);
-                        $model->update_conn_field($connector_id, 'products_previous_categories', $products_previous_categories);
-                        $model->update_conn_field($connector_id, 'auto_sync', $auto_sync);
-                        $model->update_conn_field($connector_id, 'avoid_stock_update', $avoid_stock_update);
-                        $model->update_conn_field($connector_id, 'default_cat_id', $default_cat_id);
-                        $model->update_conn_field($connector_id, 'category_is_anchor', $is_anchor);
-                        $model->update_conn_field($connector_id, 'category_page_layout', $page_layout);
+                        $result_login = $model->login_saleslayer($connector_id, $secret_key);
 
-                        $this->messageManager->addSuccess(__('Sales Layer connection established successfully!'));
+                        if ($result_login == 'login_ok'){
+
+                            $model->update_conn_field($connector_id, 'store_view_ids', $store_view_ids);
+                            $model->update_conn_field($connector_id, 'format_configurable_attributes', $format_configurable_attributes);
+                            $model->update_conn_field($connector_id, 'products_previous_categories', $products_previous_categories);
+                            $model->update_conn_field($connector_id, 'auto_sync', $auto_sync);
+                            $model->update_conn_field($connector_id, 'avoid_stock_update', $avoid_stock_update);
+                            $model->update_conn_field($connector_id, 'default_cat_id', $default_cat_id);
+                            $model->update_conn_field($connector_id, 'category_is_anchor', $is_anchor);
+                            $model->update_conn_field($connector_id, 'category_page_layout', $page_layout);
+
+                            $this->messageManager->addSuccess(__('Sales Layer connection established successfully!'));
+
+                        }else{
+
+                            $this->messageManager->addWarning(__('Could not create the connector: '.$result_login));
+
+                        }
 
                         $this->_redirect('*/synchronization');
 

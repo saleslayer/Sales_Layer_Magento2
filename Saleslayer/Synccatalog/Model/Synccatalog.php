@@ -846,6 +846,13 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
         $this->load_magento_variables();
 
         $slconn = $this->connect_saleslayer($connector_id, $secretKey);
+
+        if (!is_object($slconn)){
+
+            return $slconn;
+
+        }
+
         $configRecord = $this->load($connector_id, 'connector_id');
         $data = $configRecord->getData();
         
@@ -857,7 +864,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
 
         $get_response_time = $slconn->get_response_time('timestamp');
 
-        return $get_response_time;
+        return 'login_ok';
 
     }
 
@@ -1006,7 +1013,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
         $slconn->get_info($last_date_update);
 
         if ($slconn->has_response_error()) {
-            throw new \InvalidArgumentException($slconn->get_response_error_message());
+            return $slconn->get_response_error_message();
         }
 
         if ($response_connector_schema = $slconn->get_response_connector_schema()) {
@@ -1014,7 +1021,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
             $response_connector_type = $response_connector_schema['connector_type'];
 
             if ($response_connector_type != self::sl_connector_type) {
-                throw new \InvalidArgumentException('Invalid Sales Layer connector type');
+                return 'Invalid Sales Layer connector type';
             }
         }
 
@@ -1044,6 +1051,14 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
         $this->updateLastSync($last_sync, $connector_id);
 
         $slconn = $this->connect_saleslayer($connector_id, $this->get_conn_field($connector_id, 'secret_key'));
+
+        if (!is_object($slconn)){
+
+            $this->debbug("\r\n==== Store Sync Data END ====\r\n");
+
+            return $slconn;
+
+        }
 
         $this->updateConn($connector_id, $slconn, $slconn->get_response_time());
         
@@ -9631,7 +9646,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
                 continue;
             }
 
-            $format_configurable_attributes_codes[$format_configurable_attribute_id] = $configurable_attribute[\Magento\Eav\Api\Data\AttributeInterface::ATTRIBUTE_CODE];
+            $format_configurable_attributes_codes[$format_configurable_attribute_id] = strtolower($configurable_attribute[\Magento\Eav\Api\Data\AttributeInterface::ATTRIBUTE_CODE]);
 
         }
 
