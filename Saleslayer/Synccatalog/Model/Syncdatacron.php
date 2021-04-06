@@ -58,6 +58,8 @@ class Syncdatacron extends Synccatalog{
     protected       $cats_corrected                     = false;
     protected       $updated_product_formats            = false;
 
+    protected       $test_one_item                      = false;
+
     /**
      * Sales Layer Syncdata constructor.
      * @return void
@@ -152,7 +154,7 @@ class Syncdatacron extends Synccatalog{
             }
             
             $this->category_fields = array('category_field_name', 'category_field_url_key', 'category_field_description', 'category_field_image', 'category_field_meta_title', 'category_field_meta_keywords', 'category_field_meta_description', 'category_field_active', 'category_images_sizes');
-            $this->product_fields = array('product_field_name', 'product_field_description', 'product_field_description_short', 'product_field_price', 'product_field_image', 'product_field_sku', 'product_field_qty', 'product_field_inventory_backorders', 'product_field_meta_title', 'product_field_meta_keywords', 'product_field_meta_description', 'product_field_length', 'product_field_width', 'product_field_height', 'product_field_weight', 'product_field_status', 'product_field_visibility', 'product_field_related_references', 'product_field_crosssell_references', 'product_field_upsell_references', 'product_field_attribute_set_id', 'product_images_sizes','main_image_extension', 'product_field_tax_class_id', 'product_field_country_of_manufacture', 'product_field_special_price', 'product_field_special_from_date', 'product_field_special_to_date');
+            $this->product_fields = array('product_field_name', 'product_field_description', 'product_field_description_short', 'product_field_price', 'product_field_image', 'product_field_sku', 'product_field_qty', 'product_field_inventory_backorders', 'product_field_meta_title', 'product_field_meta_keywords', 'product_field_meta_description', 'product_field_length', 'product_field_width', 'product_field_height', 'product_field_weight', 'product_field_status', 'product_field_visibility', 'product_field_related_references', 'product_field_crosssell_references', 'product_field_upsell_references', 'product_field_attribute_set_id', 'product_images_sizes','main_image_extension', 'product_field_tax_class_id', 'product_field_country_of_manufacture', 'product_field_special_price', 'product_field_special_from_date', 'product_field_special_to_date', 'grouping_ref_field_linked');
             $this->product_format_fields = array('format_images_sizes', 'main_image_extension', 'format_field_sku', 'format_name', 'format_price', 'format_quantity', 'format_image', 'format_field_tax_class_id', 'format_field_country_of_manufacture', 'format_field_visibility', 'format_field_special_price', 'format_field_special_from_date', 'format_field_special_to_date');
 
             $this->initialized_vars = true;
@@ -170,12 +172,16 @@ class Syncdatacron extends Synccatalog{
 
         if (count($this->sql_items_delete) >= 20 || ($force_delete && count($this->sql_items_delete) > 0)){
             
-            $items = implode(',', $this->sql_items_delete);
+            if ($this->test_one_item === false){
+            
+                $items = implode(',', $this->sql_items_delete);
 
-            $sql_delete = " DELETE FROM ".$this->saleslayer_syncdata_table.
-                                " WHERE id IN (".$items.")";
+                $sql_delete = " DELETE FROM ".$this->saleslayer_syncdata_table.
+                                    " WHERE id IN (".$items.")";
 
-            $this->sl_connection_query($sql_delete);
+                $this->sl_connection_query($sql_delete);
+
+            }
 
             $this->sql_items_delete = array();
 
@@ -354,6 +360,8 @@ class Syncdatacron extends Synccatalog{
         $this->loadConfigParameters();
         $this->load_magento_variables();
 
+        if ($this->clean_main_debug_file) file_put_contents($this->sl_logs_path.'_debbug_log_saleslayer_'.date('Y-m-d').'.dat', "");
+
         $this->debbug("==== Sync Data DB INIT ".date('Y-m-d H:i:s')." ====", 'syncdata');
         
         $this->clearExcededAttemps();
@@ -444,6 +452,12 @@ class Syncdatacron extends Synccatalog{
 
             $items_to_update = $this->connection->fetchAll(" SELECT * FROM ".$this->saleslayer_syncdata_table." WHERE sync_type = 'update' and item_type = '".$index."' and sync_tries <= 2 ORDER BY item_type ASC, sync_tries ASC, id ASC LIMIT 5");
 
+            if ($this->test_one_item !== false && is_numeric($this->test_one_item)){
+
+                $items_to_update = $this->connection->fetchAll(" SELECT * FROM ".$this->saleslayer_syncdata_table." WHERE sync_type = 'update' and item_type = '".$index."' and sync_tries <= 2 and id = ".$this->test_one_item." ORDER BY item_type ASC, sync_tries ASC, id ASC LIMIT 5");
+
+            }
+
             if ($index == 'category' && !$this->cats_to_process){
 
                 if (!empty($items_to_update)){
@@ -482,6 +496,7 @@ class Syncdatacron extends Synccatalog{
              
                 $this->updateItem($item_to_update);
 
+                if ($this->test_one_item !== false) $this->end_process = true;
                 if ($this->end_process){
 
                     return false;
@@ -642,7 +657,7 @@ class Syncdatacron extends Synccatalog{
 
         $time_ini_reindex_after_formats = microtime(1);
 
-        $indexLists = array('catalog_product_attribute', 'catalogrule_product'); 
+        $indexLists = array('catalog_product_attribute', 'catalogrule_product');
 
         foreach($indexLists as $indexList) {
             
