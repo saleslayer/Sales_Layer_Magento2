@@ -133,6 +133,8 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
     protected $product_field_sku                    = 'sku';
     protected $product_field_qty                    = 'qty';
     protected $product_field_inventory_backorders   = 'product_inventory_backorders';
+    protected $product_field_inventory_min_sale_qty = 'product_inventory_min_sale_qty';
+    protected $product_field_inventory_max_sale_qty = 'product_inventory_max_sale_qty';
     protected $product_field_meta_title             = 'product_meta_title';
     protected $product_field_meta_keywords          = 'product_meta_keywords';
     protected $product_field_meta_description       = 'product_meta_description';
@@ -167,6 +169,9 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
     protected $format_field_special_from_date       = 'format_special_from_date';
     protected $format_field_special_to_date         = 'format_special_to_date';
     protected $format_field_quantity                = 'format_quantity';
+    protected $format_field_inventory_backorders    = 'format_inventory_backorders';
+    protected $format_field_inventory_min_sale_qty  = 'format_inventory_min_sale_qty';
+    protected $format_field_inventory_max_sale_qty  = 'format_inventory_max_sale_qty';
     protected $format_field_image                   = 'format_image';
     protected $format_field_tax_class_id            = 'format_tax_class_id';
     protected $format_field_country_of_manufacture  = 'format_country_of_manufacture';
@@ -200,10 +205,16 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
     protected $product_link_type_crosssell_db       = '';
     protected $config_manage_stock                  = 0;
     protected $config_default_product_tax_class     = 0;
-    protected $config_max_sale_qty                  = 0;
     protected $config_notify_stock_qty              = 0;
     protected $config_catalog_product_flat          = 0;
     protected $config_catalog_category_flat         = 0;
+
+    protected $config_backorders                    = 0;
+    protected $backorders_no                        = 0;
+    protected $backorders_yes_nonotify              = 1;
+    protected $backorders_yes_notify                = 2;
+    protected $config_min_sale_qty                  = 1;
+    protected $config_max_sale_qty                  = 10000;
 
     protected $products_not_synced                  = array();
     protected $deleted_stored_categories_ids        = array();
@@ -250,6 +261,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
     protected $sl_product_mg_category_ids           = array();
     protected $format_created                       = false;
     protected $mg_format_id                         = null;
+    protected $format_additional_fields             = array();
 
     protected $sl_logs_path                         = BP.'/var/log/sl_logs/';
     protected $sl_logs_folder_checked               = false;
@@ -829,12 +841,33 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
         $this->product_link_type_crosssell_db   = \Magento\Catalog\Model\Product\Link::LINK_TYPE_CROSSSELL;
         $this->config_manage_stock              = $this->scopeConfigInterface->getValue('cataloginventory/item_options/manage_stock');
         $this->config_default_product_tax_class = $this->scopeConfigInterface->getValue('tax/classes/default_product_tax_class');
-        $this->config_max_sale_qty              = $this->scopeConfigInterface->getValue('cataloginventory/item_options/max_sale_qty');
         $this->config_notify_stock_qty          = $this->scopeConfigInterface->getValue('cataloginventory/item_options/notify_stock_qty');
         $this->config_catalog_category_flat     = $this->scopeConfigInterface->getValue('catalog/frontend/flat_catalog_category');
         $this->config_catalog_product_flat      = $this->scopeConfigInterface->getValue('catalog/frontend/flat_catalog_product');
         $this->mg_version                       = $this->productMetadata->getVersion();
 
+        $this->backorders_no                    = \Magento\CatalogInventory\Model\Stock::BACKORDERS_NO;
+        $this->backorders_yes_nonotify          = \Magento\CatalogInventory\Model\Stock::BACKORDERS_YES_NONOTIFY;
+        $this->backorders_yes_notify            = \Magento\CatalogInventory\Model\Stock::BACKORDERS_YES_NOTIFY;
+        $this->config_backorders                = $this->scopeConfigInterface->getValue('cataloginventory/item_options/backorders');
+        $this->config_min_sale_qty              = json_decode($this->scopeConfigInterface->getValue('cataloginventory/item_options/min_sale_qty'),1);
+
+        if (is_array($this->config_min_sale_qty)){
+
+            if (isset($this->config_min_sale_qty[\Magento\Customer\Model\Group::CUST_GROUP_ALL])){
+
+                $this->config_min_sale_qty = $this->config_min_sale_qty[\Magento\Customer\Model\Group::CUST_GROUP_ALL];
+
+            }else{
+
+                $this->config_min_sale_qty = reset($this->config_min_sale_qty);
+
+            }
+
+        }
+
+        $this->config_max_sale_qty              = $this->scopeConfigInterface->getValue('cataloginventory/item_options/max_sale_qty');
+    
         if (version_compare($this->mg_version, '2.3.0') < 0) {
       
             $this->mg_tables_23[] = 'inventory_source_item';
@@ -1244,7 +1277,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
     */
     private function prepare_product_data_to_store($arrayProducts){
 
-        $fixed_product_fields = array('ID', 'ID_catalogue', $this->product_field_name, $this->product_field_description, $this->product_field_description_short, $this->product_field_price, $this->product_field_image, 'image_sizes', $this->product_field_sku, $this->product_field_qty, $this->product_field_attribute_set_id, $this->product_field_meta_title, $this->product_field_meta_keywords, $this->product_field_meta_description, $this->product_field_length, $this->product_field_width, $this->product_field_height, $this->product_field_weight, $this->product_field_related_references, $this->product_field_crosssell_references, $this->product_field_upsell_references, $this->product_field_inventory_backorders, $this->product_field_status, $this->product_field_visibility, $this->product_field_tax_class_id, $this->product_field_country_of_manufacture, $this->product_field_special_price, $this->product_field_special_from_date, $this->product_field_special_to_date);
+        $fixed_product_fields = array('ID', 'ID_catalogue', $this->product_field_name, $this->product_field_description, $this->product_field_description_short, $this->product_field_price, $this->product_field_image, 'image_sizes', $this->product_field_sku, $this->product_field_qty, $this->product_field_attribute_set_id, $this->product_field_meta_title, $this->product_field_meta_keywords, $this->product_field_meta_description, $this->product_field_length, $this->product_field_width, $this->product_field_height, $this->product_field_weight, $this->product_field_related_references, $this->product_field_crosssell_references, $this->product_field_upsell_references, $this->product_field_inventory_backorders, $this->product_field_inventory_min_sale_qty, $this->product_field_inventory_max_sale_qty, $this->product_field_status, $this->product_field_visibility, $this->product_field_tax_class_id, $this->product_field_country_of_manufacture, $this->product_field_special_price, $this->product_field_special_from_date, $this->product_field_special_to_date);
 
         $product_data_to_store = array();
 
@@ -1307,6 +1340,8 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
                         'product_field_crosssell_references',
                         'product_field_upsell_references',
                         'product_field_inventory_backorders',
+                        'product_field_inventory_min_sale_qty',
+                        'product_field_inventory_max_sale_qty',
                         'product_field_status',
                         'product_field_visibility',
                         'product_field_tax_class_id',
@@ -1429,7 +1464,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
     */
     private function prepare_product_format_data_to_store($arrayFormats){
 
-        $fixed_format_fields = array('ID', 'ID_products', $this->format_field_sku, $this->format_field_name, $this->format_field_price, $this->format_field_quantity, $this->format_field_image, 'image_sizes', $this->format_field_tax_class_id, $this->format_field_country_of_manufacture, $this->format_field_special_price, $this->format_field_special_from_date, $this->format_field_special_to_date, $this->format_field_visibility);
+        $fixed_format_fields = array('ID', 'ID_products', $this->format_field_sku, $this->format_field_name, $this->format_field_price, $this->format_field_quantity, $this->format_field_image, 'image_sizes', $this->format_field_tax_class_id, $this->format_field_country_of_manufacture, $this->format_field_special_price, $this->format_field_special_from_date, $this->format_field_special_to_date, $this->format_field_visibility, $this->format_field_inventory_backorders, $this->format_field_inventory_min_sale_qty, $this->format_field_inventory_max_sale_qty);
 
         $product_format_data_to_store = array();
 
@@ -1465,6 +1500,9 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
         $product_format_data_to_store['product_format_fields']['format_field_sku'] = $this->format_field_sku;
         $product_format_data_to_store['product_format_fields']['format_field_price'] = $this->format_field_price;
         $product_format_data_to_store['product_format_fields']['format_field_quantity'] = $this->format_field_quantity;
+        $product_format_data_to_store['product_format_fields']['format_field_inventory_backorders'] = $this->format_field_inventory_backorders;
+        $product_format_data_to_store['product_format_fields']['format_field_inventory_min_sale_qty'] = $this->format_field_inventory_min_sale_qty;
+        $product_format_data_to_store['product_format_fields']['format_field_inventory_max_sale_qty'] = $this->format_field_inventory_max_sale_qty;
         $product_format_data_to_store['product_format_fields']['format_field_image'] = $this->format_field_image;
         $product_format_data_to_store['product_format_fields']['format_field_tax_class_id'] = $this->format_field_tax_class_id;
         $product_format_data_to_store['product_format_fields']['format_field_country_of_manufacture'] = $this->format_field_country_of_manufacture;
@@ -2567,11 +2605,15 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
      * @param boolean $sl_qty               stock to update, if false will check and update stock tables
      * @return void
      */
-    private function update_item_stock($item_id, $sl_qty = null){
+    private function update_item_stock($item_id, $sl_inventory_data = array()){
 
         $manage_stock = $this->config_manage_stock;
         $is_in_stock = 0;
-        $use_config_manage_stock = 1;
+        $use_config_manage_stock = $use_config_backorders = $use_config_min_sale_qty = $use_config_max_sale_qty = 1;
+
+        $sl_backorders = $this->config_backorders;
+        $sl_min_sale_qty = $this->config_min_sale_qty;
+        $sl_max_sale_qty = $this->config_max_sale_qty;
     
         $mg_product_core_data = $this->get_product_core_data($item_id);
      
@@ -2588,9 +2630,15 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
                 ->limit(1)
         );
 
-        if (is_null($sl_qty)){
+        $avoid_stock_update = $avoid_backorders_update = $avoid_min_sale_qty_update = $avoid_max_sale_qty_update = false;
 
-            if (!empty($mg_existing_stock)){
+        if (isset($sl_inventory_data['sl_qty'])){
+
+            if (!is_null($sl_inventory_data['sl_qty']) && $sl_inventory_data['sl_qty'] !== ''){
+                
+                $sl_qty = $sl_inventory_data['sl_qty'];
+            
+            }else if (!empty($mg_existing_stock)){
 
                 $sl_qty = $mg_existing_stock['qty'];
             
@@ -2600,27 +2648,58 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
             
             }
 
+            if ($sl_qty) $is_in_stock = 1;
+
+            if ($mg_product_core_data['type_id'] == $this->product_type_configurable){
+
+                $manage_stock = 0;
+                
+            }else{
+
+                $manage_stock = 1;
+                
             }
 
-        if ($sl_qty){
-
-            $is_in_stock = 1;
-
-        }
-
-        if ($mg_product_core_data['type_id'] == $this->product_type_configurable){
-
-            $manage_stock = 0;
+            if ($manage_stock != $this->config_manage_stock) $use_config_manage_stock = 0;
 
         }else{
 
-            $manage_stock = 1;
+            $avoid_stock_update = true;
+
+        }
+
+        if (isset($sl_inventory_data['backorders'])){
+
+            $sl_backorders = $this->SLValidateInventoryBackordersValue($sl_inventory_data['backorders']);
+            if ($sl_backorders != $this->config_backorders) $use_config_backorders = 0;
+
+        }else{
+
+            $avoid_backorders_update = true;
             
         }
 
-        if ($manage_stock != $this->config_manage_stock){
+        if (isset($sl_inventory_data['min_sale_qty'])){
 
-            $use_config_manage_stock = 0;
+            $sl_min_sale_qty = $sl_inventory_data['min_sale_qty'];
+            
+            if ($sl_min_sale_qty != $this->config_min_sale_qty) $use_config_min_sale_qty = 0;
+
+        }else{
+
+            $avoid_min_sale_qty_update = true;
+            
+        }
+
+        if (isset($sl_inventory_data['max_sale_qty'])){
+
+            $sl_max_sale_qty = $sl_inventory_data['max_sale_qty'];
+
+            if ($sl_max_sale_qty != $this->config_max_sale_qty) $use_config_max_sale_qty = 0;
+
+        }else{
+
+            $avoid_max_sale_qty_update = true;
 
         }
 
@@ -2629,6 +2708,8 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
         if (!empty($mg_existing_stock)){
     
             $stock_data_to_update = array();
+
+            if (!$avoid_stock_update){
 
                 if ($sl_qty != $mg_existing_stock['qty']){
 
@@ -2654,6 +2735,56 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
 
                 }
 
+            }
+
+            if (!$avoid_backorders_update){
+                
+                if ($sl_backorders != $mg_existing_stock['backorders']){
+
+                    $stock_data_to_update['backorders'] = $sl_backorders;
+
+                }
+
+                if ($use_config_backorders != $mg_existing_stock['use_config_backorders']){
+
+                    $stock_data_to_update['use_config_backorders'] = $use_config_backorders;
+
+                }
+
+            }
+
+            if (!$avoid_min_sale_qty_update){
+
+                if ($sl_min_sale_qty != $mg_existing_stock['min_sale_qty']){
+
+                    $stock_data_to_update['min_sale_qty'] = $sl_min_sale_qty;
+
+                }
+
+                if ($use_config_min_sale_qty != $mg_existing_stock['use_config_min_sale_qty']){
+
+                    $stock_data_to_update['use_config_min_sale_qty'] = $use_config_min_sale_qty;
+
+                }
+
+            }
+
+            if (!$avoid_max_sale_qty_update){
+
+                if ($sl_max_sale_qty != $mg_existing_stock['max_sale_qty']){
+
+                    $stock_data_to_update['max_sale_qty'] = $sl_max_sale_qty;
+
+                }
+
+                if ($use_config_max_sale_qty != $mg_existing_stock['use_config_max_sale_qty']){
+
+                    $stock_data_to_update['use_config_max_sale_qty'] = $use_config_max_sale_qty;
+
+                }
+
+            }
+            
             if (!empty($stock_data_to_update)){
 
                 $this->connection->update($cataloginventory_stock_item_table, $stock_data_to_update, 'item_id = ' . $mg_existing_stock['item_id']);
@@ -2662,11 +2793,24 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
 
         }else{
             
-            $query_insert = " INSERT INTO ".$cataloginventory_stock_item_table."(`product_id`,`stock_id`,`qty`,`is_in_stock`,`low_stock_date`,`stock_status_changed_auto`,`website_id`,`manage_stock`,`use_config_manage_stock`,`max_sale_qty`,`notify_stock_qty`,`qty_increments`) values (?,?,?,?,?,?,?,?,?,?,?,?);";
+            if ($avoid_stock_update){
+                
+                $sl_qty = 0;
+                $is_in_stock = 0;
+
+                if ($mg_product_core_data['type_id'] == $this->product_type_configurable) $manage_stock = 0;
+
+                if ($manage_stock != $this->config_manage_stock) $use_config_manage_stock = 0;
+
+            }
             
-            $this->sl_connection_query($query_insert,array($item_id, $stock_id, $sl_qty, $is_in_stock , new Expr('NULL'), new Expr(0), new Expr($default_website_id), $manage_stock, $use_config_manage_stock, $this->config_max_sale_qty, $this->config_notify_stock_qty, new Expr(1)));
+            $query_insert = " INSERT INTO ".$cataloginventory_stock_item_table."(`product_id`,`stock_id`,`qty`,`is_in_stock`,`low_stock_date`,`stock_status_changed_auto`,`website_id`,`manage_stock`,`use_config_manage_stock`,`notify_stock_qty`,`qty_increments`,`backorders`,`use_config_backorders`,`min_sale_qty`,`use_config_min_sale_qty`,`max_sale_qty`,`use_config_max_sale_qty`) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);";
+            
+            $this->sl_connection_query($query_insert, array($item_id, $stock_id, $sl_qty, $is_in_stock , new Expr('NULL'), new Expr(0), new Expr($default_website_id), $manage_stock, $use_config_manage_stock, $this->config_notify_stock_qty, new Expr(1), $sl_backorders, $use_config_backorders, $sl_min_sale_qty, $use_config_min_sale_qty, $sl_max_sale_qty, $use_config_max_sale_qty));
 
         }
+
+        if (!$avoid_stock_update){
 
             $cataloginventory_stock_status_table = $this->getTable('cataloginventory_stock_status');
 
@@ -3678,7 +3822,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
                     ->where('entity_id != ?', $item_id)
                     ->where('value_id = ?', $id_image_to_delete)
                 );
-                
+
                 if ($is_in_other_items > 0){
 
                     $this->debbug("The image is assigned to another item, we don't eliminate it.");
@@ -3696,8 +3840,8 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
 
                     }
 
-                    $image_full_path = $this->product_path_base.substr($image_to_delete['filename'], 0,1).'/'.substr($image_to_delete['filename'], 1,1).'/'.$image_to_delete['filename'];
-                    
+                    $image_full_path = $this->product_path_base.$image_to_delete['filename'];
+
                     if (file_exists($image_full_path)){ 
                         
                         unlink($image_full_path); 
@@ -4670,23 +4814,59 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
 
             }
 
-            $sl_qty = null;
-
             if ($this->format_created === true || $this->avoid_stock_update == '0'){
 
-                if (isset($sl_data[$this->format_field_quantity])){
+                $sl_inventory_data = array();
                 
-                    $sl_qty = $sl_data[$this->format_field_quantity];
+                $inventory_fields = array('sl_qty' => $this->format_field_quantity, 'backorders' => $this->format_field_inventory_backorders, 'min_sale_qty' => $this->format_field_inventory_min_sale_qty, 'max_sale_qty' => $this->format_field_inventory_max_sale_qty);
+
+                foreach ($inventory_fields as $field_to_update => $sl_field) {
+                    
+                    if (isset($sl_data[$sl_field])){
+
+                        if (is_array($sl_data[$sl_field])){
+
+                            $sl_inventory_data[$field_to_update] = reset($sl_data[$sl_field]);
+                        
+                        }else{
+
+                            $sl_inventory_data[$field_to_update] = $sl_data[$sl_field];
+                        
+                        }
 
                     }else if ($this->format_created === true){
 
-                    $sl_qty = 0;
+                        switch ($field_to_update) {
+
+                            case 'sl_qty':
+                                $sl_inventory_data[$field_to_update] = 0;
+                                break;
+                            
+                            case 'backorders':
+                                $sl_inventory_data[$field_to_update] = $this->config_backorders;
+                                break;
+
+                            case 'min_sale_qty':
+                                $sl_inventory_data[$field_to_update] = $this->config_min_sale_qty;
+                                break;
+
+                            case 'max_sale_qty':
+                                $sl_inventory_data[$field_to_update] = $this->config_max_sale_qty;
+                                break;
+
+                            default:
+
+                                break;
+
+                        }
 
                     }
 
-                if (!is_null($sl_qty)){
+                }
 
-                    $this->update_item_stock($this->mg_format_id, $sl_qty);
+                if (!empty($sl_inventory_data)){
+
+                    $this->update_item_stock($this->mg_format_id, $sl_inventory_data);
 
                 }
 
@@ -4798,8 +4978,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
                         break;
 
                     case 'visibility':
-                        
-                        $sl_format_data_to_sync[$mg_format_field] = $this->visibility_not_visible;
 
                         if (isset($format['data'][$sl_format_field])){
 
@@ -4923,10 +5101,14 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
                        
                             }
                             
-                        }else if ($price_value <= 0){
+                        }else if ($price_value <= 0 && $mg_format_field == 'special_price'){
                                                     
                             $price_value = null;
-                       
+                            
+                        }else if ($price_value < 0 && $mg_format_field == 'price'){
+                                                    
+                            $price_value = null;
+                            
                         }
 
                         if ((!is_null($price_value)) || (is_null($price_value) && $mg_format_field == 'special_price')){
@@ -4935,10 +5117,20 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
                        
                         }else if (is_null($price_value) && $mg_format_field == 'price'){
 
-                            $this->debbug('## Error. Product format price does not have a valid format, it will not be updated.');
+                            if (isset($format['data'][$this->format_field_sku])){
+
+                                $format_index = 'SKU '.$format['data'][$this->format_field_sku];
+
+                            }else{
+
+                                $format_index = 'SL ID '.$format[$this->format_field_id];
+
+                            }
+
+                            $this->debbug('## Error. Product format with '.$format_index.' has a price that does not have a valid format, it will not be updated. Original value: '.print_r($format['data'][$sl_format_field],1));
 
                         }
-                    
+                        
                         break;
                     
                     default:
@@ -5212,7 +5404,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
 
             //cambiamos producto a simple
             $this->connection->update($product_table, array('type_id' => $this->product_type_simple, 'has_options' => 0, 'required_options' => 0), 'entity_id = ' . $this->mg_product_id);
-            $this->update_item_stock($this->mg_product_id);          
+            $this->update_item_stock($this->mg_product_id, array('sl_qty' => ''));
             
 
         }else{
@@ -5223,7 +5415,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
             if ($parent_product_data['type_id'] != $this->product_type_configurable || $parent_product_data['has_options'] != 1 || $parent_product_data['required_options'] != 1){
 
                 $this->connection->update($product_table, array('type_id' => $this->product_type_configurable, 'has_options' => 1, 'required_options' => 1), 'entity_id = ' . $this->mg_product_id);
-                $this->update_item_stock($this->mg_product_id); 
+                $this->update_item_stock($this->mg_product_id, array('sl_qty' => ''));
     
             }
 
@@ -6250,7 +6442,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
                                 $product_table = $this->getTable('catalog_product_entity');
                                 $this->connection->update($product_table, array('type_id' => $this->product_type_simple, 'has_options' => 0, 'required_options' => 0), 'entity_id = ' . $relation_parent_id);
 
-                                $this->update_item_stock($relation_parent_id);
+                                $this->update_item_stock($relation_parent_id, array('sl_qty' => ''));
 
                             }
 
@@ -6678,6 +6870,60 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
         }
         
         return false;
+
+    }
+
+    /**
+     * Function to validate visibility value and return MG option value.
+     * @param integer/string $value                 value to check
+     * @return integer                              MG option value
+     */
+    private function SLValidateInventoryBackordersValue($value = ''){
+        
+        $return_value = $this->config_backorders;
+
+        if (!is_null($value) && $value !== ''){
+            
+            if (is_numeric($value)){
+                
+                if (in_array($value, array($this->backorders_no, $this->backorders_yes_nonotify, $this->backorders_yes_notify))){
+                    
+                    return $value;
+
+                }
+
+            }else if (is_string($value)){
+                
+                $value_to_check = str_replace(' ', '_', strtolower($value));
+
+                // Allowed values:
+                // 0 - No Backorders
+                // 1 - Allow Qty Below 0
+                // 2 - Allow Qty Below 0 and Notify Customer
+
+                $preg_no_backorder = preg_match('~(no|backorder)~', $value_to_check);
+                $preg_allow_below = preg_match('~(allow|below)~', $value_to_check);
+                $preg_notify_customer = preg_match('~(notify|customer)~', $value_to_check);
+
+                if ($preg_notify_customer){
+                    
+                    return $this->backorders_yes_notify;
+
+                }else if ($preg_allow_below){
+                    
+                    return $this->backorders_yes_nonotify;
+
+                }else if ($preg_no_backorder){
+                    
+                    return $this->backorders_no;
+
+                }
+
+            }
+        
+        }
+
+        return $return_value;
 
     }
 
@@ -10060,6 +10306,8 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
             'product_special_to_date'           => 'format_special_to_date',
             'qty'                               => 'format_quantity',
             'product_inventory_backorders'      => 'format_inventory_backorders',
+            'product_inventory_min_sale_qty'    => 'format_inventory_min_sale_qty',
+            'product_inventory_max_sale_qty'    => 'format_inventory_max_sale_qty',
             'attribute_set_id'                  => 'format_attribute_set_id',
             'product_meta_title'                => 'format_meta_title',
             'product_meta_keywords'             => 'format_meta_keywords',
@@ -10220,16 +10468,20 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
 
                     foreach ($field_relations as $new_format_field => $old_format_field) {
                         
-                        if ($data_schema['products']['fields'][$new_format_field]['has_multilingual'] == 1){
+                        if (isset($data_schema['products']['fields'][$new_format_field])){
 
-                            $old_format_field = $old_format_field.'_'.$this->sl_language;
-                            $new_format_field = $data_schema['products']['fields'][$new_format_field]['multilingual_name'];
+                            if ($data_schema['products']['fields'][$new_format_field]['has_multilingual'] == 1){
 
-                        }
+                                $old_format_field = $old_format_field.'_'.$this->sl_language;
+                                $new_format_field = $data_schema['products']['fields'][$new_format_field]['multilingual_name'];
 
-                        if (isset($format['data'][$old_format_field])){
+                            }
 
-                            $new_format['data'][$new_format_field] = $format['data'][$old_format_field];
+                            if (isset($format['data'][$old_format_field])){
+
+                                $new_format['data'][$new_format_field] = $format['data'][$old_format_field];
+
+                            }
 
                         }
 
@@ -10737,23 +10989,59 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
      */
     private function updateProductStock($sl_data){
 
-        $sl_qty = null;
-
         if ($this->product_created === true || $this->avoid_stock_update == '0'){
 
-            if (isset($sl_data[$this->product_field_qty])){
+            $sl_inventory_data = array();
 
-                $sl_qty = $sl_data[$this->product_field_qty];
+            $inventory_fields = array('sl_qty' => $this->product_field_qty, 'backorders' => $this->product_field_inventory_backorders, 'min_sale_qty' => $this->product_field_inventory_min_sale_qty, 'max_sale_qty' => $this->product_field_inventory_max_sale_qty);
 
-            }else if ($this->product_created === true){
+            foreach ($inventory_fields as $field_to_update => $sl_field) {
+                
+                if (isset($sl_data[$sl_field])){
 
-                $sl_qty = 0;
+                    if (is_array($sl_data[$sl_field])){
+
+                        $sl_inventory_data[$field_to_update] = reset($sl_data[$sl_field]);
+                    
+                    }else{
+
+                        $sl_inventory_data[$field_to_update] = $sl_data[$sl_field];
+                    
+                    }
+
+                }else if ($this->product_created === true){
+
+                    switch ($field_to_update) {
+
+                        case 'sl_qty':
+                            $sl_inventory_data[$field_to_update] = 0;
+                            break;
+                        
+                        case 'backorders':
+                            $sl_inventory_data[$field_to_update] = $this->config_backorders;
+                            break;
+
+                        case 'min_sale_qty':
+                            $sl_inventory_data[$field_to_update] = $this->config_min_sale_qty;
+                            break;
+
+                        case 'max_sale_qty':
+                            $sl_inventory_data[$field_to_update] = $this->config_max_sale_qty;
+                            break;
+
+                        default:
+
+                            break;
+
+                    }
+
+                }
 
             }
 
-            if (!is_null($sl_qty)){
+            if (!empty($sl_inventory_data)){
 
-                $this->update_item_stock($this->mg_product_id, $sl_qty);
+                $this->update_item_stock($this->mg_product_id, $sl_inventory_data);
 
             }
 
@@ -11270,8 +11558,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
                         break;
 
                     case 'visibility':
-                        
-                        $sl_product_data_to_sync[$mg_product_field] = $this->visibility_not_visible;
 
                         if (isset($product['data'][$sl_product_field])){
 
@@ -11374,7 +11660,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
                         $price_value = '';
                         
                         (is_array($product['data'][$sl_product_field])) ? $price_value = reset($product['data'][$sl_product_field]) : $price_value = $product['data'][$sl_product_field];
-
+                        
                         if (!is_numeric($price_value)){
                             
                             if (strpos($price_value, ',') !== false){
@@ -11383,7 +11669,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
                                 
                             } 
                             
-
                             if (filter_var($price_value, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION)){
                                 
                                 $price_value = filter_var($price_value, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
@@ -11391,15 +11676,19 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
                             }
                             
                             if (!is_numeric($price_value) || $price_value === ''){
-                                                        
+                                         
                                 $price_value = null;
-
+                            
                             }
                             
-                        }else if ($price_value <= 0){
+                        }else if ($price_value <= 0 && $mg_product_field == 'special_price'){
                                                     
                             $price_value = null;
-
+                            
+                        }else if ($price_value < 0 && $mg_product_field == 'price'){
+                                                    
+                            $price_value = null;
+                            
                         }
 
                         if ((!is_null($price_value)) || (is_null($price_value) && $mg_product_field == 'special_price')){
@@ -11408,7 +11697,17 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel{
 
                         }else if (is_null($price_value) && $mg_product_field == 'price'){
 
-                            $this->debbug('## Error. Product price does not have a valid format, it will not be updated.');
+                            if (isset($product['data'][$this->product_field_sku])){
+
+                                $product_index = 'SKU '.$product['data'][$this->product_field_sku];
+
+                            }else{
+
+                                $product_index = 'SL ID '.$product[$this->product_field_id];
+
+                            }
+
+                            $this->debbug('## Error. Product with '.$product_index.' has a price that does not have a valid format, it will not be updated. Original value: '.print_r($product['data'][$sl_product_field],1));
 
                         }
 
