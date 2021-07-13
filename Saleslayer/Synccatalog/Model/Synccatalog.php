@@ -33,6 +33,9 @@ use \Magento\Eav\Model\ResourceModel\Entity\Attribute\Option\Collection as colle
 use \Magento\Cron\Model\Schedule as cronSchedule;
 use \Magento\Framework\App\Config\ScopeConfigInterface as scopeConfigInterface;
 use \Magento\Tax\Model\ClassModel as tax_class_model;
+use \Magento\Downloadable\Api\Data\LinkInterfaceFactory as linkInterfaceFactory;
+use \Magento\Downloadable\Api\Data\SampleInterfaceFactory as sampleInterfaceFactory;
+use \Magento\Downloadable\Api\Data\File\ContentInterfaceFactory as contentInterfaceFactory;
 
 class Synccatalog extends \Magento\Framework\Model\AbstractModel
 {
@@ -59,6 +62,9 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
     protected $cronSchedule;
     protected $scopeConfigInterface;
     protected $tax_class_model;
+    protected $linkInterfaceFactory;
+    protected $sampleInterfaceFactory;
+    protected $contentInterfaceFactory;
     protected $salesLayerConn;
     protected $connection;
     protected $directoryListFilesystem;
@@ -137,10 +143,16 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
     protected $product_field_upsell_references      = 'upsell_products_references';
     protected $product_field_attribute_set_id       = 'attribute_set_id';
     protected $product_field_tax_class_id           = 'product_tax_class_id';
+    protected $product_field_downloadable_information = 'product_downloadable_information';
+    protected $product_field_downloadable_files     = 'product_downloadable_files';
     protected $product_path_base                    = BP.'/pub/media/catalog/product/';
     protected $product_tmp_path_base                = BP.'/pub/media/tmp/catalog/product/';
     protected $product_images_sizes                 = array();
     protected $products_previous_categories;
+    protected $product_downloadable_information     = false;
+    protected $downloadable_links_path_base         = BP.'/pub/media/downloadable/files/links/';
+    protected $downloadable_link_samples_path_base  = BP.'/pub/media/downloadable/files/link_samples/';
+    protected $downloadable_samples_path_base       = BP.'/pub/media/downloadable/files/samples/';
 
     protected $image_extension                      = '';
     protected $small_image_extension                = '';
@@ -235,6 +247,9 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
      * @param cronSchedule                        $cronSchedule                        \Magento\Cron\Model\Schedule
      * @param scopeConfigInterface                $scopeConfigInterface                \Magento\Framework\App\Config\ScopeConfigInterface
      * @param tax_class_model                     $tax_class_model                     \Magento\Tax\Model\ClassModel
+     * @param linkInterfaceFactory                $linkInterfaceFactory                \Magento\Downloadable\Api\Data\LinkInterfaceFactory 
+     * @param sampleInterfaceFactory              $sampleInterfaceFactory              \Magento\Downloadable\Api\Data\SampleInterfaceFactory 
+     * @param contentInterfaceFactory             $contentInterfaceFactory             \Magento\Downloadable\Api\Data\File\ContentInterfaceFactory
      * @param resource|null                       $resource                            \Magento\Framework\Model\ResourceModel\AbstractResource
      * @param resourceCollection|null             $resourceCollection                  \Magento\Framework\Data\Collection\AbstractDb
      * @param array                               $data                                
@@ -266,6 +281,9 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         cronSchedule $cronSchedule,
         scopeConfigInterface $scopeConfigInterface,
         tax_class_model $tax_class_model,
+        linkInterfaceFactory $linkInterfaceFactory,
+        sampleInterfaceFactory $sampleInterfaceFactory,
+        contentInterfaceFactory $contentInterfaceFactory,
         resource $resource = null,
         resourceCollection $resourceCollection = null,
         array $data = []
@@ -295,6 +313,9 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $this->cronSchedule                             = $cronSchedule;
         $this->scopeConfigInterface                     = $scopeConfigInterface;
         $this->tax_class_model                          = $tax_class_model;
+        $this->linkInterfaceFactory                     = $linkInterfaceFactory;
+        $this->sampleInterfaceFactory                   = $sampleInterfaceFactory;
+        $this->contentInterfaceFactory                  = $contentInterfaceFactory;
         $this->connection                               = $this->resourceConnection->getConnection();
         $this->saleslayer_multiconn_table               = $this->resourceConnection->getTableName($this->saleslayer_multiconn_table);
         $this->saleslayer_syncdata_table                = $this->resourceConnection->getTableName($this->saleslayer_syncdata_table);
@@ -722,6 +743,8 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
      */
     public function login_saleslayer ($connector_id, $secretKey) {
 
+        $this->loadConfigParameters();
+
         $this->debbug('Process login...');
 
         $this->load_models();
@@ -855,7 +878,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
             return false;
 
         }
-
 
     }
 
@@ -1072,9 +1094,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                     $this->insert_syncdata_sql(true);
 
-
                 }
-
 
                 $modified_data = $data_tabla['modified'];
                 
@@ -1122,7 +1142,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                         }
 
-
                         break;
                     case 'products':
 
@@ -1167,7 +1186,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                             unset($get_response_table_data[$nombre_tabla]['modified']);
 
                         }
-
 
                         break;
                     case 'product_formats':
@@ -1285,7 +1303,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                             $indexer->getState()->setStatus(\Magento\Framework\Indexer\StateInterface::STATUS_WORKING);
                             $indexer->getState()->save();
-
 
                             $this->debbug('## time_indexer to working: '.(microtime(1) - $time_ini_indexer).' seconds.', 'timer');
 
@@ -1718,10 +1735,23 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $product_data_to_store['product_fields']['has_product_field_qty'] = $this->has_product_field_qty;
         $product_data_to_store['product_fields']['product_field_qty'] = $this->product_field_qty;
 
-        $fixed_product_fields = array('ID', 'ID_catalogue', 'product_name', 'product_description', 'product_description_short', 'product_price', 'product_image', 'image_sizes', 'sku', 'qty',
-                                        'attribute_set_id', 'product_meta_title', 'product_meta_keywords', 'product_meta_description', 'product_length', 'product_width', 
-                                        'product_height', 'product_weight', 'related_products_references', 'crosssell_products_references', 'upsell_products_references', 'product_tax_class_id',
-                                        'product_status', 'product_inventory_backorders');
+        if (isset($schema['fields'][$this->product_field_downloadable_information]) && $schema['fields'][$this->product_field_downloadable_information]['has_multilingual']) {
+
+            $this->product_field_downloadable_information .= '_'.$this->sl_language;
+
+        }
+
+        $product_data_to_store['product_fields']['product_field_downloadable_information'] = $this->product_field_downloadable_information;
+
+        if (isset($schema['fields'][$this->product_field_downloadable_files]) && $schema['fields'][$this->product_field_downloadable_files]['has_multilingual']) {
+
+            $this->product_field_downloadable_files .= '_'.$this->sl_language;
+
+        }
+
+        $product_data_to_store['product_fields']['product_field_downloadable_files'] = $this->product_field_downloadable_files;
+
+        $fixed_product_fields = array('ID', 'ID_catalogue', 'product_name', 'product_description', 'product_description_short', 'product_price', 'product_image', 'image_sizes', 'sku', 'qty', 'attribute_set_id', 'product_meta_title', 'product_meta_keywords', 'product_meta_description', 'product_length', 'product_width', 'product_height', 'product_weight', 'related_products_references', 'crosssell_products_references', 'upsell_products_references', 'product_tax_class_id', 'product_status', 'product_inventory_backorders', 'product_downloadable_information', 'product_downloadable_files');
 
         if (!empty($schema['fields'])){
         
@@ -2412,7 +2442,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                 $conn_found = array_search($this->processing_connector_id, $this->sl_multiconn_table_data['category'][$sl_id]['sl_connectors']);
 
-
                 if (!is_numeric($conn_found)){
 
                     $this->sl_multiconn_table_data['category'][$sl_id]['sl_connectors'][] = $this->processing_connector_id;
@@ -2657,6 +2686,11 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         if ($this->check_product($product)){
             $this->debbug('## check_product: '.(microtime(1) - $time_ini_check_product).' seconds.', 'timer');
             $syncProd = true;
+            $time_ini_check_downloadable_product = microtime(1);
+            if ($this->product_downloadable_information){
+                $this->checkDownloadableProduct($product);
+            }
+            $this->debbug('## check_downloadable_product: '.(microtime(1) - $time_ini_check_downloadable_product).' seconds.', 'timer');
             $time_ini_check_configurable_product = microtime(1);
             $this->check_configurable_product($product);
             $this->debbug('## check_configurable_product: '.(microtime(1) - $time_ini_check_configurable_product).' seconds.', 'timer');
@@ -2718,10 +2752,9 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
             }
 
-
         }else{
 
-            return 'item_not_updated';
+            return 'item_updated';
 
         }
 
@@ -2738,6 +2771,8 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         $sl_data = $product['data'];
         $sl_name = $sl_data[$this->product_field_name];
         $this->debbug(" > Checking if product ID: $sl_id exists");
+
+        $this->product_downloadable_information = $this->checkDownloadableData($sl_id, $sl_data);
 
         $existing_product = $this->findSaleslayerProductId($sl_id, $this->comp_id);
         $is_new_product = true;
@@ -2826,6 +2861,1267 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
         }
 
         return false;
+
+    }
+
+    /**
+     * Function to check downloadable data from product.
+     * @param  integer $product_id      SL product ID
+     * @param  array   $product_data    product data
+     * @return void
+     */
+    protected function checkDownloadableData($product_id, $product_data){
+
+        if (isset($product_data[$this->product_field_downloadable_information]) && 
+            !is_array($product_data[$this->product_field_downloadable_information]) && 
+            $product_data[$this->product_field_downloadable_information] !== '' &&
+            isset($product_data[$this->product_field_downloadable_files]) &&
+            is_array($product_data[$this->product_field_downloadable_files]) &&
+            !empty($product_data[$this->product_field_downloadable_files])){
+
+            $error_prod_message = 'Product'.((isset($product_data[$this->product_field_name]) && $product_data[$this->product_field_name] !== '') ? ' '.$product_data[$this->product_field_name] : '').' with SL ID '.$product_id;
+
+            $sl_titles = array_flip(array('type', 'title', 'price', 'file type', 'file name', 'sample type', 'sample name', 'shareable', 'max downloads'));
+            $mandatory_titles = array('type' => 0, 'file name' => 0, 'title' => 0);
+
+            $sl_titles_in_table = array();
+
+            $downloadable_information = $product_data[$this->product_field_downloadable_information];
+            $downloadable_files = $product_data[$this->product_field_downloadable_files];
+            
+            $downloadable_information_data = json_decode($downloadable_information, 1);
+                     
+            if (is_array($downloadable_information_data) && (json_last_error() == JSON_ERROR_NONE)){
+
+                $titles_row = false;
+
+                foreach ($downloadable_information_data as $keyTable => $table_row) {
+                    
+                    if (!array_filter($table_row)){
+
+                        unset($downloadable_information_data[$keyTable]);
+                        continue;
+
+                    }else if ($titles_row === false){
+
+                        $title_column_found = false;
+
+                        foreach ($table_row as $keyRow => $table_value){
+                        
+                            if ($table_value == ''){
+                            
+                                continue;
+
+                            } 
+
+                            $table_value_converted = str_replace(array('_', '.'), array(' ', ''), strtolower($table_value));
+
+                            if (!$title_column_found){
+
+                                if (isset($sl_titles[$table_value_converted])){
+
+                                    $titles_row = $keyRow;
+                                    $title_column_found = true;
+
+                                }else{
+
+                                    break;
+
+                                }
+
+                            }
+
+                            if (isset($sl_titles[$table_value_converted])){
+
+                                $sl_titles_in_table[$table_value_converted] = $keyRow;
+
+                                if (isset($mandatory_titles[$table_value_converted])){
+
+                                    unset($mandatory_titles[$table_value_converted]);
+
+                                }
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+                if ($titles_row !== false){
+
+                    unset($downloadable_information_data[$titles_row]);
+
+                }
+    
+                if (!empty($mandatory_titles)){
+
+                    $this->debbug('## Error. '.$error_prod_message.'. Preparing downloadable information. '.(count($mandatory_titles) > 1 ? 'Columns "' : 'Column "').implode('" and "', array_keys($mandatory_titles)).'" must be in table.');
+
+                }else{
+
+                    if (!empty($downloadable_information_data)){
+
+                        $final_downloadable_information = array();
+
+                        $type_title_key = $sl_titles_in_table['type'];
+                        $file_name_title_key = $sl_titles_in_table['file name'];
+                        $file_title_title_key = $sl_titles_in_table['title'];
+
+                        $items_to_process = array();
+
+                        foreach ($downloadable_information_data as $downloadable_information_data_row){
+                                                        
+                            $type = strtolower($downloadable_information_data_row[$type_title_key]);
+                            
+                            if (in_array($type, array('link title', 'sample title'))){
+
+                                if (isset($sl_titles_in_table['title'])){
+
+                                    $final_downloadable_information['titles'][$type] = $downloadable_information_data_row[$sl_titles_in_table['title']];
+
+                                }
+
+                            }else{
+
+                                $file_name = $downloadable_information_data_row[$file_name_title_key];           
+                                $file_title = trim($downloadable_information_data_row[$file_title_title_key]);
+                                
+                                if (!is_numeric($file_title) && !$file_title){
+
+                                    $this->debbug('## Error. '.$error_prod_message.'. Preparing downloadable information. All rows require an unique title, an empty title found: '.print_r($downloadable_information_data_row,1));
+                                    continue;
+
+                                }
+
+                                if (!isset($items_to_process[$file_title])){
+                                
+                                    if (isset($downloadable_files[$file_name]['FILE']) && $downloadable_files[$file_name]['FILE'] !== ''){
+                                    
+                                        $file_url = $downloadable_files[$file_name]['FILE'];
+                                        $new_file = array('type' => $type, 'file name' => $file_name, 'file url' => $file_url);
+
+                                        foreach ($sl_titles_in_table as $sl_title => $sl_title_column) {
+                                            
+                                            if ($type == 'sample' && !in_array($sl_title, array('type', 'file name', 'title', 'file type'))) continue;
+                                            if ($type == 'link' && strpos($sl_title, 'sample') !== false){
+
+                                                if ($sl_title == 'sample type' && !isset($sl_titles_in_table['sample name'])) continue;
+                                                if ($sl_title == 'sample name'){
+                                                    
+                                                    $sample_name = $downloadable_information_data_row[$sl_title_column];
+                                                    
+                                                    if (isset($downloadable_files[$sample_name]['FILE']) && $downloadable_files[$sample_name]['FILE'] !== ''){
+
+                                                        if (!isset($new_file[$sl_title])) $new_file['sample url'] = $downloadable_files[$sample_name]['FILE'];
+
+                                                    }else{
+
+                                                        if (isset($new_file['sample type'])) unset($new_file['sample type']);
+                                                        continue;
+
+                                                    }
+
+                                                }
+
+                                            }
+
+                                            if (!isset($new_file[$sl_title])) $new_file[$sl_title] = $downloadable_information_data_row[$sl_title_column];
+
+                                        }
+
+                                        $final_downloadable_information['files'][$type][] = $new_file;
+                                        $items_to_process[$file_title] = 0;
+
+                                    }
+
+                                }
+
+                            }
+
+                        }
+
+                        if (!empty($final_downloadable_information) && isset($final_downloadable_information['files']) && !empty($final_downloadable_information['files'])){
+
+                            return $final_downloadable_information;
+                            
+                        }else{
+
+                            $this->debbug('## Error. '.$error_prod_message.'. Preparing downloadable information. No valid rows with files found in table.');
+
+                        }
+
+                    }else{
+
+                        $this->debbug('## Error. '.$error_prod_message.'. Preparing downloadable information. No valid rows found in table.');
+
+                    }
+
+                }
+             
+            }else{
+
+                $this->debbug('## Error. '.$error_prod_message.'. Decoding downloadable information: '.print_r($downloadable_information,1));
+                
+            }
+                
+        }
+
+        return false;
+
+    }
+
+    /**
+     * Function to check if a product is downloadable, and if not, set it.
+     * @param  array $product                   product to check
+     * @return void
+     */
+    private function checkDownloadableProduct($product){
+
+        $sl_id = $product['id'];
+
+        $error_prod_message = 'product'.((isset($product_data[$this->product_field_name]) && $product_data[$this->product_field_name] !== '') ? ' '.$product_data[$this->product_field_name] : '').' with SL ID '.$sl_id;
+    
+        $update_product = $this->findSaleslayerProductId($sl_id, $this->comp_id);
+
+        if ($update_product->getTypeId() !== $this->product_type_downloadable){
+
+            $update_product->setWeight(null);
+            $update_product->setTypeId($this->product_type_downloadable);
+            
+            try {
+
+                $update_product->save();
+            
+            } catch (\Exception $e) {
+
+                $this->debbug('## Error. Updating '.$error_prod_message.' type to downloadable: '.$e->getMessage());
+                return false;
+
+            }
+
+        }
+
+        $product_modified = false;
+        $links_have_price = false;
+
+        // Link process
+
+        $product_extension = $update_product->getExtensionAttributes();
+        $current_links = $product_extension->getDownloadableProductLinks();
+        $link_titles_to_update = array();
+
+        if (!isset($this->product_downloadable_information['files']['link'])){
+            
+            if (!empty($current_links)){
+                
+                $product_modified = true;
+                $current_links = array();
+
+            }
+
+        }else{
+
+            $links_to_update = $this->product_downloadable_information['files']['link'];
+            
+            $max_sort_order = 1;
+
+            if (!empty($current_links)){
+                
+                $downloadable_fields = array('title' => 'title', 'price' => 'price', 'file_url' => 'file url', 'sample_url' => 'sample url', 'is_shareable' => 'shareable', 'number_of_downloads' => 'max downloads');
+
+                foreach ($current_links as $keyCL => $current_link){
+                    
+                    $current_link_found = false;
+                    $current_link_data = $current_link->getData();
+            
+                    if (isset($current_link_data['sort_order']) && $current_link_data['sort_order'] > $max_sort_order) $max_sort_order = $current_link_data['sort_order'];            
+
+                    if (!empty($links_to_update)){
+
+                        foreach ($links_to_update as $keyLTU => $link_to_update) {
+                            
+                            if ($link_to_update['title'] == $current_link_data['title']){
+
+                                $link_to_update_has_price = false;
+                                if (isset($current_link_data['price']) && is_numeric($current_link_data['price']) && $current_link_data['price'] > 0){
+                                    
+                                    $link_to_update_has_price = true;
+            
+                                }
+
+                                foreach ($downloadable_fields as $mg_downloadable_field => $downloadable_field) {
+
+                                    if (isset($link_to_update[$downloadable_field])){
+
+                                        $field_new_value = $link_to_update[$downloadable_field];
+                                     
+                                        if ($downloadable_field == 'title' && $field_new_value != $current_link_data[$mg_downloadable_field]){
+
+                                            $link_titles_to_update[$link_to_update['link_id']] = $field_new_value;
+                                     
+                                        }
+
+                                        if (in_array($downloadable_field, array('price', 'max downloads'))){
+
+                                            if (!is_numeric($field_new_value)){
+                                                
+                                                if (strpos($field_new_value, ',') !== false){
+                                                    
+                                                    $field_new_value = str_replace(',', '.', $field_new_value);
+                                                    
+                                                } 
+                                                
+                                                if (filter_var($field_new_value, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION)){
+                                                    
+                                                    $field_new_value = filter_var($field_new_value, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
+                                                    
+                                                }
+                                                
+                                                if (!is_numeric($field_new_value) || $field_new_value === ''){
+                                                             
+                                                    $field_new_value = 0;
+                                                
+                                                }
+                                                
+                                            }else if ($field_new_value < 0){
+                                                                        
+                                                $field_new_value = 0;
+                                                
+                                            }
+
+                                            if ($field_new_value != $current_link_data[$mg_downloadable_field]){
+
+                                                if ($mg_downloadable_field == 'price'){
+
+                                                    if ($field_new_value == 0){
+
+                                                        $link_to_update_has_price = false;
+                                     
+                                                    }
+
+                                                    $product_modified = true;
+                                                    $current_links[$keyCL]->setPrice($field_new_value);
+
+                                                }else{
+
+                                                    $product_modified = true;
+                                                    $current_links[$keyCL]->setNumberOfDownloads($field_new_value);
+
+                                                }
+
+                                            }
+
+                                        }
+
+                                        if ($downloadable_field == 'shareable'){
+
+                                            $is_shareable = $this->checkDownloadableIsShareable(trim(strtolower($field_new_value)));
+                                            
+                                            if ($is_shareable != $current_link_data[$mg_downloadable_field]){
+
+                                                $product_modified = true;
+                                                $current_links[$keyCL]->setIsShareable($is_shareable);
+
+                                            }
+
+                                        }
+
+                                        if ($downloadable_field == 'file url'){
+                                            
+                                            $file_url = $link_to_update['file url'];
+                                            $file_name = $link_to_update['file name'];
+                                            
+                                            $file_type = $this->checkDownloadableFileType((isset($link_to_update['file type']) ? trim(strtolower($link_to_update['file type'])) : ''));
+                                            
+                                            if ($file_type == $current_link_data['link_type']){
+
+                                                if ($current_link_data['link_type'] == \Magento\Downloadable\Helper\Download::LINK_TYPE_URL){
+
+                                                    if ($current_link_data['link_url'] != $file_url){
+
+                                                        $product_modified = true;
+                                                        $current_links[$keyCL]->setLinkUrl($file_url);
+
+                                                    }
+
+                                                }else{
+
+                                                    $md5_url = $this->verify_md5_image_url($file_url);
+
+                                                    $local_item_path = $this->downloadable_links_path_base.$current_link_data['link_file'];
+                                                    $md5_local_item = $this->verify_md5_image_url($local_item_path);
+
+                                                    if ($md5_url !== $md5_local_item){
+
+                                                        $product_modified = true;
+                                                        $new_content = $this->contentInterfaceFactory->create();
+                                                        $new_content->setFileData(
+                                                            base64_encode(file_get_contents($file_url))
+                                                        );
+                                                        
+                                                        $new_content->setName($file_name);
+                                                        $current_links[$keyCL]->setLinkFileContent($new_content);
+                                                        unset($new_content);
+
+                                                    }
+
+                                                }
+
+                                            }else{
+
+                                                if ($file_type == \Magento\Downloadable\Helper\Download::LINK_TYPE_URL){
+
+                                                    $product_modified = true;
+                                                    $current_links[$keyCL]->setLinkType(\Magento\Downloadable\Helper\Download::LINK_TYPE_URL);
+                                                    $current_links[$keyCL]->setLinkUrl($file_url);
+
+                                                }else{
+
+                                                    $product_modified = true;
+                                                    $current_links[$keyCL]->setLinkType(\Magento\Downloadable\Helper\Download::LINK_TYPE_FILE);
+                                                    $current_links[$keyCL]->setLinkUrl(null);
+
+                                                    $new_content = $this->contentInterfaceFactory->create();
+                                                    $new_content->setFileData(
+                                                        base64_encode(file_get_contents($file_url))
+                                                    );
+                                                    
+                                                    $new_content->setName($file_name);
+                                                    $current_links[$keyCL]->setLinkFileContent($new_content);
+                                                    unset($new_content);
+
+                                                }
+
+                                            }
+                                            
+                                        }
+
+                                        if ($downloadable_field == 'sample url'){
+
+                                            $sample_url = $link_to_update['sample url'];
+                                            $sample_name = $link_to_update['sample name'];
+
+                                            $sample_type = $this->checkDownloadableFileType((isset($link_to_update['sample type']) ? trim(strtolower($link_to_update['sample type'])) : ''));
+
+                                            if ($sample_type == $current_link_data['sample_type']){
+
+                                                if ($current_link_data['sample_type'] == \Magento\Downloadable\Helper\Download::LINK_TYPE_URL){
+
+                                                    if ($current_link_data['sample_url'] != $file_url){
+
+                                                        $product_modified = true;
+                                                        $current_links[$keyCL]->setSampleUrl($file_url);
+
+                                                    }
+
+                                                }else{
+
+                                                    $md5_url = $this->verify_md5_image_url($sample_url);
+                                                   
+                                                    $local_item_path = $this->downloadable_link_samples_path_base.$current_link_data['sample_file'];
+                                                    $md5_local_item = $this->verify_md5_image_url($local_item_path);
+                                                   
+                                                    if ($md5_url !== $md5_local_item){
+
+                                                        $product_modified = true;
+                                                        $new_content = $this->contentInterfaceFactory->create();
+                                                        $new_content->setFileData(
+                                                            base64_encode(file_get_contents($sample_url))
+                                                        );
+                                                        
+                                                        $new_content->setName($sample_name);
+                                                        $current_links[$keyCL]->setSampleFileContent($new_content);
+                                                        unset($new_content);
+
+                                                    }
+
+                                                }
+
+                                            }else{
+
+                                                if ($sample_type == \Magento\Downloadable\Helper\Download::LINK_TYPE_URL){
+
+                                                    $product_modified = true;
+                                                    $current_links[$keyCL]->setSampleType(\Magento\Downloadable\Helper\Download::LINK_TYPE_URL);
+                                                    $current_links[$keyCL]->setSampleUrl($file_url);
+
+                                                }else{
+
+                                                    $product_modified = true;
+                                                    $current_links[$keyCL]->setSampleType(\Magento\Downloadable\Helper\Download::LINK_TYPE_FILE);
+                                                    $current_links[$keyCL]->setSampleUrl(null);
+
+                                                    $new_content = $this->contentInterfaceFactory->create();
+                                                    $new_content->setFileData(
+                                                        base64_encode(file_get_contents($sample_url))
+                                                    );
+                                                    
+                                                    $new_content->setName($sample_name);
+                                                    $current_links[$keyCL]->setSampleFileContent($new_content);
+                                                    unset($new_content);
+
+                                                }
+
+                                            }
+                                            
+                                        }
+                                    
+                                    }
+
+                                }
+
+                                if ($link_to_update_has_price) $links_have_price = true;
+
+                                $current_link_found = true;
+                                unset($links_to_update[$keyLTU]);
+                                break;
+
+                            }
+
+                        }
+
+                    }
+
+                    if (!$current_link_found){
+
+                        $product_modified = true;
+                        unset($current_links[$keyCL]);
+
+                    }
+
+                } 
+
+            }
+
+            if (!empty($links_to_update)){
+
+                $max_sort_order++;
+
+                foreach ($links_to_update as $link_to_update) {
+
+                    $file_url = $link_to_update['file url'];
+                    $file_name = $link_to_update['file name'];
+                    $link_title = $link_to_update['title'];
+
+                    $file_type = $this->checkDownloadableFileType((isset($link_to_update['file type']) ? trim(strtolower($link_to_update['file type'])) : ''));
+                
+                    $num_fields = array('link_price' => 'price', 'link_max_downloads' => 'max downloads');
+
+                    foreach ($num_fields as $mg_field => $num_field) {
+                        
+                        if (isset($link_to_update[$num_field])){
+
+                            $$mg_field = $link_to_update[$num_field];
+
+                            if (!is_numeric($$mg_field)){
+                                
+                                if (strpos($$mg_field, ',') !== false){
+                                    
+                                    $$mg_field = str_replace(',', '.', $$mg_field);
+                                    
+                                } 
+                                
+                                if (filter_var($$mg_field, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION)){
+                                    
+                                    $$mg_field = filter_var($$mg_field, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
+                                    
+                                }
+                                
+                                if (!is_numeric($$mg_field) || $$mg_field === ''){
+                                             
+                                    $$mg_field = 0;
+                                
+                                }
+                                
+                            }else if ($$mg_field < 0){
+                                                        
+                                $$mg_field = 0;
+                                
+                            }
+
+                        }else{
+
+                            $$mg_field = 0;
+
+                        }
+
+                    }
+
+                    $sample_url = $sample_name = '';
+
+                    if (isset($link_to_update['sample url'])){
+
+                        $sample_url = $link_to_update['sample url'];
+                        $sample_name = $link_to_update['sample name'];
+
+                        $sample_type = $this->checkDownloadableFileType((isset($link_to_update['sample type']) ? trim(strtolower($link_to_update['sample type'])) : ''));
+
+                    }
+
+                    $is_shareable = $this->checkDownloadableIsShareable((isset($link_to_update['shareable']) ? trim(strtolower($link_to_update['shareable'])) : ''));
+
+                    $link = $this->linkInterfaceFactory->create();
+                    $link->setId(null);
+                    $link->setLinkType($file_type);
+                    $link->setTitle($link_title);
+
+                    if ($file_type == \Magento\Downloadable\Helper\Download::LINK_TYPE_URL){
+
+                        $link->setLinkUrl($file_url);
+
+                    }else{
+
+                        $new_link_content = $this->contentInterfaceFactory->create();
+                        $new_link_content->setFileData(
+                            base64_encode(file_get_contents($file_url))
+                        );
+                        $new_link_content->setName($file_name);
+
+                        $link->setLinkFileContent($new_link_content);
+                        unset($new_link_content);
+
+                    }
+
+                    if (is_numeric($link_price) && $link_price > 0) $links_have_price = true;
+
+                    $link->setPrice($link_price);
+                    $link->setNumberOfDownloads($link_max_downloads);
+                    $link->setIsShareable($is_shareable);
+                    $link->setSortOrder($max_sort_order);
+
+                    $max_sort_order++;
+
+                    if (isset($sample_url) && $sample_url !== ''){
+
+                        $link->setSampleType($sample_type);
+                        
+                        if ($sample_type == \Magento\Downloadable\Helper\Download::LINK_TYPE_URL){
+
+                            $link->setSampleUrl($sample_url);
+
+                        }else{
+
+                            $new_sample_content = $this->contentInterfaceFactory->create();
+                            $new_sample_content->setFileData(
+                                base64_encode(file_get_contents($sample_url))
+                            );
+                            $new_sample_content->setName($sample_name);
+
+                            $link->setSampleFileContent($new_sample_content);
+                            unset($new_sample_content);
+
+                        }
+
+                    }
+
+                    $current_links[] = $link;
+                    unset($link);
+                    
+                }
+
+                $product_modified = true;
+
+            }
+
+        }
+
+        if ($product_modified){
+
+            $product_extension->setDownloadableProductLinks($current_links);
+            $update_product->setExtensionAttributes($product_extension);
+
+            try{
+
+                $update_product->save();
+
+            } catch (\Exception $e) {
+
+                $this->debbug('## Error. Updating downloadable product after links changes: '.$e->getMessage());
+
+            }
+
+        }
+
+        if (!empty($link_titles_to_update)){
+
+            if (!empty($this->store_view_ids)){
+
+                foreach ($this->store_view_ids as $store_view_id) {
+                    
+                    $update_product = $this->findSaleslayerProductId($sl_id, $this->comp_id, false, $store_view_id);
+
+                    $product_extension = $update_product->getExtensionAttributes();
+                    $current_links = $product_extension->getDownloadableProductLinks();
+
+                    $modified_data = false;
+
+                    foreach ($current_links as $keyCL => $current_link) {
+                     
+                        if (isset($link_titles_to_update[$current_link->getLinkId()]) && ($link_titles_to_update[$current_link->getLinkId()] !== $current_link->getTitle())){
+
+                            $modified_data = true;
+                            $current_links[$keyCL]->setTitle($link_titles_to_update[$current_link->getLinkId()]);
+
+                        }
+
+                    }
+
+                    $product_extension->setDownloadableProductLinks($current_links);
+                    $update_product->setExtensionAttributes($product_extension);
+
+                    if ($modified_data){
+
+                        try{
+
+                            $update_product->save();
+
+                        } catch (\Exception $e) {
+
+                            $this->debbug('## Error. Updating downloadable product links titles on store view '.$store_view_id.': '.$e->getMessage());
+
+                        }
+
+                    }
+
+                }
+
+            }else{
+                
+                $update_product = $this->findSaleslayerProductId($sl_id, $this->comp_id);
+
+                $product_extension = $update_product->getExtensionAttributes();
+                $current_links = $product_extension->getDownloadableProductLinks();
+
+                $modified_data = false;
+
+                foreach ($current_links as $keyCL => $current_link) {
+                 
+                    if (isset($link_titles_to_update[$current_link->getLinkId()]) && ($link_titles_to_update[$current_link->getLinkId()] !== $current_link->getTitle())){
+
+                        $modified_data = true;
+                        $current_links[$keyCL]->setTitle($link_titles_to_update[$current_link->getLinkId()]);
+
+                    }
+
+                }
+
+                $product_extension->setDownloadableProductLinks($current_links);
+                $update_product->setExtensionAttributes($product_extension);
+
+                if ($modified_data){
+
+                    try{
+
+                        $update_product->save();
+
+                    } catch (\Exception $e) {
+
+                        $this->debbug('## Error. Updating downloadable product links titles: '.$e->getMessage());
+
+                    }
+
+                }
+
+            }
+
+        }
+
+        // Sample process
+
+        $product_modified = false;
+
+        $current_samples = $product_extension->getDownloadableProductSamples();
+        $sample_titles_to_update = array();
+
+        if (!isset($this->product_downloadable_information['files']['sample'])){
+            
+            if (!empty($current_samples)){
+                
+                $product_modified = true;
+                $current_samples = array();
+
+            }
+
+        }else{
+
+            $samples_to_update = $this->product_downloadable_information['files']['sample'];
+            
+            $max_sort_order = 1;
+
+            if (!empty($current_samples)){
+
+                $downloadable_fields = array('title' => 'title', 'file_url' => 'file url');
+
+                foreach ($current_samples as $keyCS => $current_sample){
+                    
+                    $current_sample_found = false;
+                    $current_sample_data = $current_sample->getData();
+            
+                    if (isset($current_sample_data['sort_order']) && $current_sample_data['sort_order'] > $max_sort_order) $max_sort_order = $current_sample_data['sort_order'];            
+
+                    if (!empty($samples_to_update)){
+
+                        foreach ($samples_to_update as $keySTU => $sample_to_update) {
+                            
+                            if ($sample_to_update['title'] == $current_sample_data['title']){
+                                
+                                foreach ($downloadable_fields as $mg_downloadable_field => $downloadable_field) {
+
+                                    if (isset($sample_to_update[$downloadable_field])){
+
+                                        $field_new_value = $sample_to_update[$downloadable_field];
+
+                                        if ($downloadable_field == 'title' && $field_new_value != $current_sample_data[$mg_downloadable_field]){
+
+                                            $sample_titles_to_update[$sample_to_update['sample_id']] = $field_new_value;
+
+                                        }
+
+                                        if ($downloadable_field == 'file url'){
+
+                                            $file_url = $sample_to_update['file url'];
+                                            $file_name = $sample_to_update['file name'];
+
+                                            $file_type = $this->checkDownloadableFileType((isset($sample_to_update['file type']) ? trim(strtolower($sample_to_update['file type'])) : ''));
+                                            
+                                            if ($file_type == $current_sample_data['sample_type']){
+
+                                                if ($current_sample_data['sample_type'] == \Magento\Downloadable\Helper\Download::LINK_TYPE_URL){
+
+                                                    if ($current_sample_data['sample_url'] != $file_url){
+
+                                                        $product_modified = true;
+                                                        $current_samples[$keyCS]->setSampleUrl($file_url);
+
+                                                    }
+
+                                                }else{
+
+                                                    $md5_url = $this->verify_md5_image_url($file_url);
+                                                    
+                                                    $local_item_path = $this->downloadable_samples_path_base.$current_sample_data['sample_file'];
+                                                    $md5_local_item = $this->verify_md5_image_url($local_item_path);
+                                                    
+                                                    if ($md5_url !== $md5_local_item){
+
+                                                        $product_modified = true;
+                                                        $new_content = $this->contentInterfaceFactory->create();
+                                                        $new_content->setFileData(
+                                                            base64_encode(file_get_contents($file_url))
+                                                        );
+                                                        
+                                                        $new_content->setName($file_name);
+                                                        $current_samples[$keyCS]->setSampleFileContent($new_content);
+                                                        unset($new_content);
+
+                                                    }
+
+                                                }
+
+                                            }else{
+
+                                                if ($file_type == \Magento\Downloadable\Helper\Download::LINK_TYPE_URL){
+
+                                                    $product_modified = true;
+                                                    $current_samples[$keyCS]->setSampleType(\Magento\Downloadable\Helper\Download::LINK_TYPE_URL);
+                                                    $current_samples[$keyCS]->setSampleUrl($file_url);
+
+                                                }else{
+
+                                                    $product_modified = true;
+                                                    $current_samples[$keyCS]->setSampleType(\Magento\Downloadable\Helper\Download::LINK_TYPE_FILE);
+                                                    $current_samples[$keyCS]->setSampleUrl(null);
+
+                                                    $new_content = $this->contentInterfaceFactory->create();
+                                                    $new_content->setFileData(
+                                                        base64_encode(file_get_contents($file_url))
+                                                    );
+                                                    
+                                                    $new_content->setName($file_name);
+                                                    $current_samples[$keyCS]->setSampleFileContent($new_content);
+                                                    unset($new_content);
+
+                                                }
+
+                                            }
+                                            
+                                        }
+                                    
+                                    }
+
+                                }
+
+                                $current_sample_found = true;
+                                unset($samples_to_update[$keySTU]);
+                                break;
+
+                            }
+
+                        }
+
+                    }
+
+                    if (!$current_sample_found){
+
+                        $product_modified = true;
+                        unset($current_samples[$keyCS]);
+
+                    }
+
+                } 
+
+            }
+
+            if (!empty($samples_to_update)){
+
+                $max_sort_order++;
+
+                foreach ($samples_to_update as $sample_to_update) {
+
+                    $file_url = $sample_to_update['file url'];
+                    $file_name = $sample_to_update['file name'];
+                    $sample_title = $sample_to_update['title'];
+
+                    $file_type = $this->checkDownloadableFileType((isset($sample_to_update['file type']) ? trim(strtolower($sample_to_update['file type'])) : ''));
+
+                    $sample = $this->sampleInterfaceFactory->create();
+                    $sample->setId(null);
+                    $sample->setSampleType($file_type);
+                    $sample->setTitle($sample_title);
+
+                    if ($file_type == \Magento\Downloadable\Helper\Download::LINK_TYPE_URL){
+
+                        $sample->setSampleUrl($file_url);
+
+                    }else{
+
+                        $new_sample_content = $this->contentInterfaceFactory->create();
+                        $new_sample_content->setFileData(
+                            base64_encode(file_get_contents($file_url))
+                        );
+                        $new_sample_content->setName($file_name);
+
+                        $sample->setSampleFileContent($new_sample_content);
+                        unset($new_sample_content);
+
+                    }
+
+                    $sample->setSortOrder($max_sort_order);
+
+                    $max_sort_order++;
+
+                    $current_samples[] = $sample;
+                    unset($sample);
+                    
+                }
+
+                $product_modified = true;
+
+            }
+
+        }
+
+        if ($product_modified){
+
+            $product_extension->setDownloadableProductSamples($current_samples);
+            $update_product->setExtensionAttributes($product_extension);
+            
+            try{
+
+                $update_product->save();
+
+            } catch (\Exception $e) {
+
+                $this->debbug('## Error. Updating downloadable product after samples changes: '.$e->getMessage());
+
+            }
+
+        }
+
+        if (!empty($sample_titles_to_update)){
+
+            if (!empty($this->store_view_ids)){
+
+                foreach ($this->store_view_ids as $store_view_id) {
+                    
+                    $update_product = $this->findSaleslayerProductId($sl_id, $this->comp_id, false, $store_view_id);
+
+                    $product_extension = $update_product->getExtensionAttributes();
+                    $current_samples = $product_extension->getDownloadableProductSamples();
+
+                    $modified_data = false;
+
+                    foreach ($current_samples as $keyCS => $current_sample) {
+                     
+                        if (isset($sample_titles_to_update[$current_sample->getSampleId()]) && ($sample_titles_to_update[$current_sample->getSampleId()] !== $current_sample->getTitle())){
+
+                            $modified_data = true;
+                            $current_samples[$keyCS]->setTitle($sample_titles_to_update[$current_sample->getSampleId()]);
+
+                        }
+
+                    }
+
+                    $product_extension->setDownloadableProductSamples($current_samples);
+                    $update_product->setExtensionAttributes($product_extension);
+
+                    if ($modified_data){
+
+                        try{
+
+                            $update_product->save();
+
+                        } catch (\Exception $e) {
+
+                            $this->debbug('## Error. Updating downloadable product samples titles on store view '.$store_view_id.': '.$e->getMessage());
+
+                        }
+
+                    }
+
+                }
+
+            }else{
+                
+                $update_product = $this->findSaleslayerProductId($sl_id, $this->comp_id);
+
+                $product_extension = $update_product->getExtensionAttributes();
+                $current_samples = $product_extension->getDownloadableProductSamples();
+
+                $modified_data = false;
+
+                foreach ($current_samples as $keyCS => $current_sample) {
+                 
+                    if (isset($sample_titles_to_update[$current_sample->getSampleId()]) && ($sample_titles_to_update[$current_sample->getSampleId()] !== $current_sample->getTitle())){
+
+                        $modified_data = true;
+                        $current_samples[$keyCS]->setTitle($sample_titles_to_update[$current_sample->getSampleId()]);
+
+                    }
+
+                }
+
+                $product_extension->setDownloadableProductSamples($current_samples);
+                $update_product->setExtensionAttributes($product_extension);
+
+                if ($modified_data){
+
+                    try{
+
+                        $update_product->save();
+
+                    } catch (\Exception $e) {
+
+                        $this->debbug('## Error. Updating downloadable product samples titles: '.$e->getMessage());
+
+                    }
+
+                }
+
+            }
+
+        }
+
+        // Header information process
+
+        $product_modified = false;
+
+        $update_product = $this->findSaleslayerProductId($sl_id, $this->comp_id);
+
+        if ($update_product->getLinksPurchasedSeparately() != $links_have_price){
+            
+            $update_product->setLinksPurchasedSeparately($links_have_price);
+            $product_modified = true;
+
+        }
+
+        $has_link_title = $has_sample_title = false;
+
+        if (isset($this->product_downloadable_information['titles']['link title'])){
+
+            $has_link_title = true;
+            $link_title = $this->product_downloadable_information['titles']['link title'];
+          
+        }
+
+        if (isset($this->product_downloadable_information['titles']['sample title'])){
+
+            $has_sample_title = true;
+            $sample_title = $this->product_downloadable_information['titles']['sample title'];
+          
+        }
+
+        if ($has_link_title || $has_sample_title){
+
+            if (!empty($this->store_view_ids)){
+
+                if ($product_modified){
+
+                    try{
+
+                        $update_product->save();
+
+                    } catch (\Exception $e) {
+
+                        $this->debbug('## Error. Updating downloadable product links purchase option: '.$e->getMessage());
+
+                    }
+
+                }
+                
+                foreach ($this->store_view_ids as $store_view_id){
+                    
+                    $modified_data = false;
+
+                    $update_product = $this->findSaleslayerProductId($sl_id, $this->comp_id, false, $store_view_id);
+
+                    if ($has_link_title && $update_product->getLinksTitle() != $link_title){
+                        
+                        $modified_data = true;
+                        $update_product->setLinksTitle($link_title);
+
+                    }
+
+                    if ($has_sample_title && $update_product->getSamplesTitle() != $sample_title){
+                        
+                        $modified_data = true;
+                        $update_product->setSamplesTitle($sample_title);
+
+                    }
+
+                    if ($modified_data){
+
+                        try{
+
+                            $update_product->save();
+
+                        } catch (\Exception $e) {
+
+                            $this->debbug('## Error. Updating downloadable product links header titles on store view '.$store_view_id.': '.$e->getMessage());
+
+                        }
+
+                    }
+
+                }
+
+            }else{
+
+                $modified_data = false;
+
+                if ($has_link_title && $update_product->getLinksTitle() != $link_title){
+                    
+                    $modified_data = true;
+                    $update_product->setLinksTitle($link_title);
+
+                }
+
+                if ($has_sample_title && $update_product->getSamplesTitle() != $sample_title){
+                    
+                    $modified_data = true;
+                    $update_product->setSamplesTitle($sample_title);
+
+                }
+
+                if ($modified_data){
+
+                    try{
+
+                        $update_product->save();
+
+                    } catch (\Exception $e) {
+
+                        $this->debbug('## Error. Updating downloadable product links purchase option and titles: '.$e->getMessage());
+
+                    }
+
+                }
+
+            }
+
+        }else{
+
+            if ($product_modified){
+
+                try{
+
+                    $update_product->save();
+
+                } catch (\Exception $e) {
+
+                    $this->debbug('## Error. Updating downloadable product links purchase option: '.$e->getMessage());
+
+                }
+
+            }
+
+        }
+
+        return true;
+
+    }
+
+    /**
+     * Function to check downloadable value file type
+     * @param  string $value_to_check   value to check it's file type
+     * @return string                   file type found, or URL type by default
+     */
+    protected function checkDownloadableFileType($value_to_check = ''){
+
+        if ($value_to_check !== ''){
+
+            if (preg_match('~(url|'.\Magento\Downloadable\Helper\Download::LINK_TYPE_URL.')~', $value_to_check)){
+            
+                return \Magento\Downloadable\Helper\Download::LINK_TYPE_URL;
+            
+            }else if (preg_match('~(upload|file|'.\Magento\Downloadable\Helper\Download::LINK_TYPE_FILE.')~', $value_to_check)){
+                
+                return \Magento\Downloadable\Helper\Download::LINK_TYPE_FILE;
+
+            }
+
+        }
+        
+        return \Magento\Downloadable\Helper\Download::LINK_TYPE_URL;
+
+    }
+
+    /**
+     * Function to check if value is shareable
+     * @param  string $value_to_check   value to check if it's shareable
+     * @return string                   is_shareable value found, or YES by default
+     */
+    protected function checkDownloadableIsShareable($value_to_check = ''){
+
+        if (!is_null($value_to_check) && $value_to_check !== ''){
+
+            if (is_numeric($value_to_check)){
+
+                if (in_array($value_to_check, array(\Magento\Downloadable\Model\Link::LINK_SHAREABLE_YES, \Magento\Downloadable\Model\Link::LINK_SHAREABLE_NO, \Magento\Downloadable\Model\Link::LINK_SHAREABLE_CONFIG))){
+                
+                    return $value_to_check;
+
+                }
+
+            }else if (is_string($value_to_check)){
+
+                if (preg_match('~(use|config)~', $value_to_check)){
+                
+                    return \Magento\Downloadable\Model\Link::LINK_SHAREABLE_CONFIG;
+                
+                }else if (preg_match('~(no)~', $value_to_check)){
+                    
+                    return \Magento\Downloadable\Model\Link::LINK_SHAREABLE_NO;
+
+                }
+
+            }
+
+        }
+           
+        return \Magento\Downloadable\Model\Link::LINK_SHAREABLE_YES;
 
     }
 
@@ -3021,7 +4317,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         //If the product has an attribute_set_id we find the existing by name or id, otherwise we use the default one.
         $sl_attribute_set_id = '';
-        if (isset($sl_data[$this->product_field_attribute_set_id])){
+        if (isset($sl_data[$this->product_field_attribute_set_id])){ 
             $sl_attribute_set_id_value = '';
             if (is_array($sl_data[$this->product_field_attribute_set_id]) && !empty($sl_data[$this->product_field_attribute_set_id])){
                 $sl_attribute_set_id_value = reset($sl_data[$this->product_field_attribute_set_id]);
@@ -3097,6 +4393,16 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         $new_product->setTaxClassId($sl_tax_class_id_found);
 
+        if ($this->product_downloadable_information === false){
+
+            $product_type = $this->product_type_simple;
+
+        }else{
+
+            $product_type = $this->product_type_virtual;
+
+        }
+
         $new_product->setAttributeSetId($sl_attribute_set_id)
                     ->setName($sl_name)
                     ->setUrlKey($url_key)
@@ -3110,7 +4416,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                                         'use_config_manage_stock' => $use_config_manage_stock))
                     ->setCreatedAt(strtotime('now'))
                     ->setStatus($this->status_enabled)
-                    ->setTypeId($this->product_type_simple)
+                    ->setTypeId($product_type)
                     ->setVisibility($this->visibility_both);
                     // ->setTaxClassId(0); //tax class (0 - none, 1 - default, 2 - taxable, 4 - shipping);
 
@@ -3160,11 +4466,13 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
             $new_product->setHeight(1);
         }  
 
-        if (isset($sl_data[$this->product_field_weight]) && is_numeric($sl_data[$this->product_field_weight])){
-            $new_product->setWeight($sl_data[$this->product_field_weight]);
-        }else{
-            $new_product->setWeight(1);
-        }    
+        if ($this->product_downloadable_information === false){
+            if (isset($sl_data[$this->product_field_weight]) && is_numeric($sl_data[$this->product_field_weight])){
+                $new_product->setWeight($sl_data[$this->product_field_weight]);
+            }else{
+                $new_product->setWeight(1);
+            }
+        }
 
         try {
             if ($new_product->save()){
@@ -3418,7 +4726,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         }
 
-
         if (isset($sl_data[$this->product_field_height]) && is_numeric($sl_data[$this->product_field_height])){
 
             if ($update_product->getHeight() != $sl_data[$this->product_field_height]){
@@ -3430,14 +4737,17 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         }
 
+        if ($this->product_downloadable_information === false){
+                    
+            if (isset($sl_data[$this->product_field_weight]) && is_numeric($sl_data[$this->product_field_weight])){
 
-        if (isset($sl_data[$this->product_field_weight]) && is_numeric($sl_data[$this->product_field_weight])){
+                if ($update_product->getWeight() != $sl_data[$this->product_field_weight]){
 
-            if ($update_product->getWeight() != $sl_data[$this->product_field_weight]){
-
-                $update_product->setWeight($sl_data[$this->product_field_weight]);
-                $product_modified = true;
+                    $update_product->setWeight($sl_data[$this->product_field_weight]);
+                    $product_modified = true;
                 
+                }
+
             }
 
         }
@@ -4266,7 +5576,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         }
 
-
         $time_ini_check_existing = microtime(1);
         $existing_items = $update_product->getMediaGalleryEntries();
         $items_modified = false;
@@ -4320,7 +5629,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                                     $this->galleryProcessor->removeImage($update_product, $item_data['file']);
                                     $items_modified = true;
-
 
                                 }else{
 
@@ -4679,7 +5987,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                 }
 
             }
-
 
         }
 
@@ -5432,7 +6739,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
                     }
 
-
                     $form_product->save();
 
                     if ($modified_name){
@@ -5542,7 +6848,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                         $this->debbug('## sync_format_images: '.(microtime(1) - $time_ini_sync_format_images).' seconds.', 'timer');
                     
                     }
-
 
                     unset($sl_data[$this->format_field_image]);
 
@@ -5942,7 +7247,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         return 'item_updated';
 
-
     }
 
     /**
@@ -6337,14 +7641,12 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
                             
                             $time_ini_mod_item = microtime(1);
 
-
                             if ($item_data['types'] != $image_media_attribute){
 
                                 if (!$main_image_processed && $main_image_to_process['image_name'] == $item_filename){
 
                                     $this->galleryProcessor->removeImage($update_format, $item_data['file']);
                                     $items_modified = true;
-
 
                                 }else{
 
@@ -7151,7 +8453,6 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
             }
 
         }
-
 
     }
 
@@ -8975,7 +10276,7 @@ class Synccatalog extends \Magento\Framework\Model\AbstractModel
 
         $exportlines = '';
 
-        if(preg_match('/[A-Za-z0-9]*.[A-Za-z0-9]{3}/',$logfile) &&  file_exists( $log_dir_path.$logfile)){
+        if(preg_match('/[A-Za-z0-9]*.[A-Za-z0-9]{3}/',$logfile) && file_exists($log_dir_path.$logfile)){
             $file = file($log_dir_path.$logfile);
             $listed = 0;
             $warnings = 0;

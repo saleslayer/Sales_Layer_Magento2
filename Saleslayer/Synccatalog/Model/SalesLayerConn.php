@@ -20,7 +20,6 @@ class SalesLayerConn {
     public  $version_class               = '1.22';
 
     public  $url                         = 'api.saleslayer.com';
-    // public $url                         = 'localhost/Saleslayer/api/';
     
     public  $SSL                         = false;
     public  $SSL_Cert                    = null;
@@ -147,6 +146,7 @@ class SalesLayerConn {
         $URL .= '&parents_category_tree=1';
         $URL .= '&first_parent_level=1';
         $URL .= '&same_parent_variants=1';
+        $URL .= '&get_file_refereneces=1';
 
         return $URL;
     }

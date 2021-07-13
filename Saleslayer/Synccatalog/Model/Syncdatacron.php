@@ -36,6 +36,9 @@ use \Magento\Eav\Model\ResourceModel\Entity\Attribute\Option\Collection as colle
 use \Magento\Cron\Model\Schedule as cronSchedule;
 use \Magento\Framework\App\Config\ScopeConfigInterface as scopeConfigInterface;
 use \Magento\Tax\Model\ClassModel as tax_class_model;
+use \Magento\Downloadable\Api\Data\LinkInterfaceFactory as linkInterfaceFactory;
+use \Magento\Downloadable\Api\Data\SampleInterfaceFactory as sampleInterfaceFactory;
+use \Magento\Downloadable\Api\Data\File\ContentInterfaceFactory as contentInterfaceFactory;
 
 /**
  * Class Saleslayer_Synccatalog_Model_Syncdatacron
@@ -86,6 +89,9 @@ class Syncdatacron extends Synccatalog{
                 cronSchedule $cronSchedule,
                 scopeConfigInterface $scopeConfigInterface,
                 tax_class_model $tax_class_model,
+                linkInterfaceFactory $linkInterfaceFactory,
+                sampleInterfaceFactory $sampleInterfaceFactory,
+                contentInterfaceFactory $contentInterfaceFactory,
                 resource $resource = null,
                 resourceCollection $resourceCollection = null,
                 array $data = []) {
@@ -115,6 +121,9 @@ class Syncdatacron extends Synccatalog{
                             $cronSchedule,
                             $scopeConfigInterface,
                             $tax_class_model,
+                            $linkInterfaceFactory,
+                            $sampleInterfaceFactory,
+                            $contentInterfaceFactory,
                             $resource,
                             $resourceCollection,
                             $data);
@@ -148,7 +157,7 @@ class Syncdatacron extends Synccatalog{
             $this->execute_slyr_load_functions();
             
             $this->category_fields = array('category_field_name', 'category_field_description', 'category_field_image', 'category_field_meta_title', 'category_field_meta_keywords', 'category_field_meta_description', 'category_images_sizes');
-            $this->product_fields = array('product_field_name', 'product_field_description', 'product_field_description_short', 'product_field_price', 'product_field_image', 'product_field_meta_title', 'product_field_meta_keywords', 'product_field_meta_description', 'product_images_sizes', 'has_product_field_sku', 'product_field_sku', 'has_product_field_qty', 'product_field_qty', 'image_extensions', 'product_field_tax_class_id', 'product_field_length', 'product_field_width', 'product_field_height', 'product_field_weight', 'product_field_status');
+            $this->product_fields = array('product_field_name', 'product_field_description', 'product_field_description_short', 'product_field_price', 'product_field_image', 'product_field_meta_title', 'product_field_meta_keywords', 'product_field_meta_description', 'product_images_sizes', 'has_product_field_sku', 'product_field_sku', 'has_product_field_qty', 'product_field_qty', 'image_extensions', 'product_field_tax_class_id', 'product_field_length', 'product_field_width', 'product_field_height', 'product_field_weight', 'product_field_status',  'product_field_downloadable_information', 'product_field_downloadable_files');
 
             $this->product_format_fields = array('format_images_sizes', 'image_extensions');
 

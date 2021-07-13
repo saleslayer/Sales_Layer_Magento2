@@ -36,6 +36,9 @@ use \Magento\Eav\Model\ResourceModel\Entity\Attribute\Option\Collection as colle
 use \Magento\Cron\Model\Schedule as cronSchedule;
 use \Magento\Framework\App\Config\ScopeConfigInterface as scopeConfigInterface;
 use \Magento\Tax\Model\ClassModel as tax_class_model;
+use \Magento\Downloadable\Api\Data\LinkInterfaceFactory as linkInterfaceFactory;
+use \Magento\Downloadable\Api\Data\SampleInterfaceFactory as sampleInterfaceFactory;
+use \Magento\Downloadable\Api\Data\File\ContentInterfaceFactory as contentInterfaceFactory;
 
 /**
  * Class Saleslayer_Synccatalog_Model_Indexerscron
@@ -77,6 +80,9 @@ class Indexerscron extends Synccatalog{
                 cronSchedule $cronSchedule,
                 scopeConfigInterface $scopeConfigInterface,
                 tax_class_model $tax_class_model,
+                linkInterfaceFactory $linkInterfaceFactory,
+                sampleInterfaceFactory $sampleInterfaceFactory,
+                contentInterfaceFactory $contentInterfaceFactory,
                 resource $resource = null,
                 resourceCollection $resourceCollection = null,
                 array $data = []) {
@@ -106,6 +112,9 @@ class Indexerscron extends Synccatalog{
                             $cronSchedule,
                             $scopeConfigInterface,
                             $tax_class_model,
+                            $linkInterfaceFactory,
+                            $sampleInterfaceFactory,
+                            $contentInterfaceFactory,
                             $resource,
                             $resourceCollection,
                             $data);
